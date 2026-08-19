@@ -344,6 +344,34 @@ export default function ShareModal({
                 </a>
               </div>
             </div>
+
+            {/* Direct Official Contact Shortcuts */}
+            <div className="p-3 bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 border border-amber-400/30 rounded-2xl text-white flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] font-bold text-amber-300 block uppercase">Rittika Event Management</span>
+                <span className="text-xs font-black text-white">Owner/CEO: Robin Kumar (+880 1721-779396)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href="https://wa.me/8801721779396"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[11px] font-black flex items-center gap-1 cursor-pointer"
+                >
+                  <MessageCircle size={13} />
+                  হোয়াটসঅ্যাপ
+                </a>
+                <a
+                  href="https://www.facebook.com/VRelegantshop"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-black flex items-center gap-1 cursor-pointer"
+                >
+                  <ExternalLink size={13} />
+                  ফেসবুক পেজ
+                </a>
+              </div>
+            </div>
           </div>
         )}
 

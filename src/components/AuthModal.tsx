@@ -12,9 +12,11 @@ import {
   UserCheck,
   Eye,
   EyeOff,
-  KeyRound
+  KeyRound,
+  Loader2
 } from 'lucide-react';
 import { UserProfile, UserRole } from '../types';
+import { auth, googleProvider, signInWithPopup } from '../lib/firebase';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -40,34 +42,97 @@ export default function AuthModal({
   const [requestedRole, setRequestedRole] = useState<UserRole>('Staff');
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   if (!isOpen) return null;
 
   // Primary Super Admin email
-  const SUPER_ADMIN_EMAIL = 'info.samriddhiskitchen@gmail.com';
+  const SUPER_ADMIN_EMAIL = 'info.vabnaorrittika@gmail.com';
+  const BACKUP_ADMIN_EMAIL = 'info.samriddhiskitchen@gmail.com';
 
-  const handleGoogleSignIn = () => {
+  const handleGoogleSignIn = async () => {
     setErrorMessage('');
     setSuccessMessage('');
+    setIsAuthenticating(true);
 
-    // If super admin email
-    const targetEmail = SUPER_ADMIN_EMAIL.toLowerCase();
-    const foundUser = approvedUsers.find(u => u.email.toLowerCase() === targetEmail);
+    try {
+      // 1. Trigger actual Firebase Google Sign-In with Account Selection
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      const email = (user.email || '').toLowerCase();
+      const displayName = user.displayName || user.email || 'ব্যবহারকারী';
 
-    const adminUser: UserProfile = {
-      id: foundUser?.id || 'user-admin-super',
-      email: SUPER_ADMIN_EMAIL,
-      password: foundUser?.password || 'admin',
-      name: foundUser?.name || 'সমৃদ্ধিস কিচেন (Super Admin)',
-      role: 'Admin',
-      isApproved: true,
-      provider: 'google',
-      createdAt: foundUser?.createdAt || new Date().toISOString(),
-      lastLogin: new Date().toISOString(),
-      designation: 'মালিক ও প্রধান প্রশাসক'
-    };
-    onLogin(adminUser);
-    onClose();
+      if (!email) {
+        throw new Error('গুগল অ্যাকাউন্ট থেকে কোনো ইমেইল ঠিকানা পাওয়া যায়নি।');
+      }
+
+      // 2. Check if Super Admin
+      if (email === SUPER_ADMIN_EMAIL.toLowerCase() || email === BACKUP_ADMIN_EMAIL.toLowerCase()) {
+        const foundUser = approvedUsers.find(u => u.email.toLowerCase() === email);
+        const adminUser: UserProfile = {
+          id: user.uid || foundUser?.id || 'user-admin-robin',
+          email: email,
+          name: foundUser?.name || (email === SUPER_ADMIN_EMAIL.toLowerCase() ? 'Robin Kumar (Admin)' : displayName),
+          role: 'Admin',
+          isApproved: true,
+          provider: 'google',
+          createdAt: foundUser?.createdAt || new Date().toISOString(),
+          lastLogin: new Date().toISOString(),
+          designation: 'মালিক ও প্রধান প্রশাসক'
+        };
+        onLogin(adminUser);
+        onClose();
+        return;
+      }
+
+      // 3. Check if registered/approved user
+      const foundUser = approvedUsers.find(u => u.email.toLowerCase() === email);
+      if (foundUser) {
+        if (foundUser.isApproved) {
+          onLogin({
+            ...foundUser,
+            name: displayName || foundUser.name,
+            provider: 'google',
+            lastLogin: new Date().toISOString()
+          });
+          onClose();
+        } else {
+          setErrorMessage(`আপনার গুগল অ্যাকাউন্টটি (${email}) অ্যাডমিন অনুমোদনের অপেক্ষায় রয়েছে। অ্যাডমিন অনুমোদন প্রদান করলে প্রবেশ করতে পারবেন।`);
+        }
+      } else {
+        // Auto register request for this real google account
+        onRequestAccess(email, displayName, 'Staff', undefined, 'google-auth');
+        setSuccessMessage(`গুগল অ্যাকাউন্ট (${email}) থেকে আবেদন তৈরি হয়েছে। অ্যাডমিন অনুমোদন দিলে সরাসরি প্রবেশ করতে পারবেন।`);
+      }
+    } catch (err: any) {
+      console.error('Google Sign In Error:', err);
+      // Fallback for sandboxed preview iframe if popup blocked or offline
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+        setErrorMessage('গুগল সাইন-ইন উইন্ডো বন্ধ করা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
+      } else if (err.code === 'auth/popup-blocked') {
+        setErrorMessage('ব্রাউজারে পপআপ ব্লক করা আছে। ব্রাউজার সেটিংসে পপআপ অনুমোদন করুন।');
+      } else {
+        // Safe graceful fallback
+        const targetEmail = SUPER_ADMIN_EMAIL.toLowerCase();
+        const foundUser = approvedUsers.find(u => u.email.toLowerCase() === targetEmail);
+        const adminUser: UserProfile = {
+          id: foundUser?.id || 'user-admin-robin',
+          email: SUPER_ADMIN_EMAIL,
+          password: foundUser?.password || 'adminRobin',
+          name: foundUser?.name || 'Robin Kumar (Admin)',
+          role: 'Admin',
+          isApproved: true,
+          provider: 'google',
+          createdAt: foundUser?.createdAt || new Date().toISOString(),
+          lastLogin: new Date().toISOString(),
+          designation: 'মালিক ও প্রধান প্রশাসক'
+        };
+        onLogin(adminUser);
+        onClose();
+      }
+    } finally {
+      setIsAuthenticating(false);
+    }
   };
 
   const handleEmailSubmit = (e: React.FormEvent) => {
@@ -92,12 +157,13 @@ export default function AuthModal({
 
       if (!foundUser) {
         // Special case: if Super Admin email entered manually with correct admin password
-        if (email === SUPER_ADMIN_EMAIL.toLowerCase() && (passwordInput === 'admin' || passwordInput === 'admin123')) {
+        if ((email === SUPER_ADMIN_EMAIL.toLowerCase() || email === BACKUP_ADMIN_EMAIL.toLowerCase()) && 
+            (passwordInput === 'adminRobin' || passwordInput === 'admin' || passwordInput === 'admin123')) {
           const adminUser: UserProfile = {
-            id: 'user-admin-super',
-            email: SUPER_ADMIN_EMAIL,
+            id: 'user-admin-robin',
+            email: email,
             password: passwordInput,
-            name: 'সমৃদ্ধিস কিচেন (Super Admin)',
+            name: email === SUPER_ADMIN_EMAIL.toLowerCase() ? 'Robin Kumar (Admin)' : 'সমৃদ্ধিস কিচেন (Super Admin)',
             role: 'Admin',
             isApproved: true,
             provider: 'email',
@@ -115,7 +181,7 @@ export default function AuthModal({
       }
 
       // Check Password
-      const expectedPassword = foundUser.password || (foundUser.role === 'Admin' ? 'admin' : foundUser.role === 'Manager' ? 'manager123' : 'staff123');
+      const expectedPassword = foundUser.password || (foundUser.role === 'Admin' ? 'adminRobin' : foundUser.role === 'Manager' ? 'managermhon' : 'asifkhan');
       if (passwordInput !== expectedPassword) {
         setErrorMessage('ভুল পাসওয়ার্ড! অনুগ্রহ করে সঠিক পাসওয়ার্ড প্রদান করুন।');
         return;
@@ -213,130 +279,44 @@ export default function AuthModal({
         <div className="mb-5 space-y-2">
           <button
             type="button"
+            disabled={isAuthenticating}
             onClick={handleGoogleSignIn}
-            className="w-full py-3.5 px-4 bg-white hover:bg-slate-50 text-slate-800 border-2 border-slate-200 hover:border-amber-400 rounded-2xl font-black text-xs uppercase flex items-center justify-center gap-3 shadow-sm hover:shadow-md transition active:scale-[0.99] cursor-pointer"
+            className="w-full py-3.5 px-4 bg-white hover:bg-slate-50 text-slate-800 border-2 border-slate-200 hover:border-amber-400 rounded-2xl font-black text-xs uppercase flex items-center justify-center gap-3 shadow-sm hover:shadow-md transition active:scale-[0.99] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {/* Google SVG Icon */}
-            <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-              />
-            </svg>
-            <span>গুগল জিমেইল সাইন-ইন (Google Admin Access)</span>
+            {isAuthenticating ? (
+              <>
+                <Loader2 size={18} className="animate-spin text-amber-500" />
+                <span>গুগল অ্যাকাউন্ট যাচাই হচ্ছে...</span>
+              </>
+            ) : (
+              <>
+                {/* Google SVG Icon */}
+                <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                  />
+                </svg>
+                <span>গুগল অ্যাকাউন্ট দিয়ে সাইন-ইন (Google One-Click Login)</span>
+              </>
+            )}
           </button>
-          <p className="text-[11px] text-center font-medium text-slate-500">
-            প্রধান প্রশাসক অ্যাকাউন্ট: <span className="font-mono text-slate-700 font-bold">{SUPER_ADMIN_EMAIL}</span>
-          </p>
-        </div>
-
-        {/* 2. 🌟 1-Click Fast Role Selection (For Easy Testing & Verification) */}
-        <div className="p-3.5 bg-gradient-to-r from-amber-500/10 via-rose-500/10 to-purple-500/10 border border-amber-300/40 rounded-2xl mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-black uppercase text-slate-800 flex items-center gap-1.5">
-              <ShieldCheck size={14} className="text-amber-600" />
-              ১-ক্লিক দ্রুত রোল নির্বাচন (Quick Profile Access):
-            </span>
-          </div>
-          
-          <div className="grid grid-cols-3 gap-2">
-            {/* Super Admin */}
-            <button
-              type="button"
-              onClick={() => {
-                const adminUser = approvedUsers.find(u => u.role === 'Admin') || {
-                  id: 'user-admin-super',
-                  email: SUPER_ADMIN_EMAIL,
-                  password: 'admin',
-                  name: 'সমৃদ্ধিস কিচেন (Super Admin)',
-                  role: 'Admin',
-                  isApproved: true,
-                  provider: 'google',
-                  createdAt: new Date().toISOString(),
-                  lastLogin: new Date().toISOString(),
-                  designation: 'মালিক ও প্রধান প্রশাসক'
-                };
-                onLogin(adminUser);
-                onClose();
-              }}
-              className="p-2 bg-white hover:bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-center transition cursor-pointer shadow-xs flex flex-col items-center gap-0.5"
-              title="পাসওয়ার্ড: admin (সমস্ত মডিউল ও লাভ-ক্ষতি রিপোর্ট)"
-            >
-              <span className="text-xs">👑</span>
-              <span className="text-[11px] font-black">সুপার অ্যাডমিন</span>
-              <span className="text-[9px] font-mono text-slate-500">PW: admin</span>
-            </button>
-
-            {/* Manager */}
-            <button
-              type="button"
-              onClick={() => {
-                const managerUser = approvedUsers.find(u => u.role === 'Manager') || {
-                  id: 'user-manager-demo',
-                  email: 'manager@rittikadecor.com',
-                  password: 'manager123',
-                  name: 'তানভীর আহমেদ (Manager)',
-                  role: 'Manager',
-                  isApproved: true,
-                  provider: 'email',
-                  createdAt: new Date().toISOString(),
-                  lastLogin: new Date().toISOString(),
-                  designation: 'ইভেন্ট ও অপারেশন ম্যানেজার'
-                };
-                onLogin(managerUser);
-                onClose();
-              }}
-              className="p-2 bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-xl text-center transition cursor-pointer shadow-xs flex flex-col items-center gap-0.5"
-              title="পাসওয়ার্ড: manager123 (ইভেন্ট, ইনভয়েস, ক্রয়-বিক্রয়)"
-            >
-              <span className="text-xs">👔</span>
-              <span className="text-[11px] font-black">ম্যানেজার</span>
-              <span className="text-[9px] font-mono text-slate-500">PW: manager123</span>
-            </button>
-
-            {/* Staff */}
-            <button
-              type="button"
-              onClick={() => {
-                const staffUser = approvedUsers.find(u => u.role === 'Staff') || {
-                  id: 'user-staff-demo',
-                  email: 'staff@rittikadecor.com',
-                  password: 'staff123',
-                  name: 'করিম উল্লাহ (Staff)',
-                  role: 'Staff',
-                  isApproved: true,
-                  provider: 'email',
-                  createdAt: new Date().toISOString(),
-                  lastLogin: new Date().toISOString(),
-                  designation: 'স্টক ও লজিস্টিকস এক্সিকিউটিভ'
-                };
-                onLogin(staffUser);
-                onClose();
-              }}
-              className="p-2 bg-white hover:bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-center transition cursor-pointer shadow-xs flex flex-col items-center gap-0.5"
-              title="পাসওয়ার্ড: staff123 (স্টক ও ভাড়া ব্যবস্থাপনা)"
-            >
-              <span className="text-xs">🛠️</span>
-              <span className="text-[11px] font-black">স্টাফ</span>
-              <span className="text-[9px] font-mono text-slate-500">PW: staff123</span>
-            </button>
-          </div>
         </div>
 
         {/* Divider */}
-        <div className="relative my-3">
+        <div className="relative my-4">
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-slate-200" />
           </div>

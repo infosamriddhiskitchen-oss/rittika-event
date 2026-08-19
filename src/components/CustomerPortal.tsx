@@ -33,7 +33,12 @@ import {
   Square,
   Download,
   FileDown,
-  Presentation
+  Presentation,
+  Phone,
+  MessageCircle,
+  ExternalLink,
+  Building2,
+  Globe
 } from 'lucide-react';
 import { Customer, EventEntry, RentalOutEntry, OnlineBooking, Attachment, UserRole, PortfolioItem } from '../types';
 import { toBengaliNumber, formatCurrency } from '../utils';
@@ -538,6 +543,98 @@ export default function CustomerPortal({
           <FileText size={14} className="stroke-[2.5]" />
           দলিল ও ফাইল ম্যানেজার
         </button>
+      </div>
+
+      {/* 🌟 Official Business Profile & 1-Click WhatsApp + Facebook Connect Card */}
+      <div className="bg-gradient-to-br from-slate-950 via-purple-950 to-slate-900 border border-amber-400/30 rounded-3xl p-5 sm:p-6 text-white shadow-xl shadow-purple-950/20 relative overflow-hidden">
+        {/* Subtle Ambient Glow */}
+        <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-amber-500/10 via-rose-500/10 to-transparent rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+          
+          {/* Left: Brand, CEO, Address & Location Details */}
+          <div className="space-y-2.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 text-[10px] font-black uppercase px-3 py-1 rounded-full shadow-xs flex items-center gap-1">
+                👑 অফিসিয়াল ইভেন্ট পার্টনার
+              </span>
+              <span className="text-[11px] font-bold text-amber-200/90 flex items-center gap-1">
+                <Building2 size={13} className="text-amber-400" />
+                প্রতিষ্ঠানের নাম: <strong className="text-white">Rittika Event Management</strong>
+              </span>
+            </div>
+
+            <div>
+              <h2 className="text-xl sm:text-2xl font-black uppercase text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-rose-200 to-purple-200 tracking-tight">
+                Rittika Event Management
+              </h2>
+              <p className="text-xs font-bold text-amber-300 flex items-center gap-1.5 mt-0.5">
+                <span>Owner / CEO:</span>
+                <span className="text-white bg-white/10 px-2 py-0.5 rounded-md border border-white/15">Robin Kumar</span>
+              </p>
+            </div>
+
+            {/* Address & Location Badges */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-medium text-slate-300 pt-1">
+              <div className="flex items-start gap-2 bg-white/5 border border-white/10 rounded-xl p-2.5">
+                <MapPin size={16} className="text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">অফিসের ঠিকানা</span>
+                  <span className="text-slate-100 font-bold text-[11px]">রথপাড়া, ভেড়ামারা, কুষ্টিয়া, বাংলাদেশ — 7040</span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 bg-white/5 border border-white/10 rounded-xl p-2.5">
+                <Globe size={16} className="text-teal-400 shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">লোকেশন ও বিভাগ</span>
+                  <span className="text-slate-100 font-bold text-[11px]">Bheramara, Khulna Division, Bangladesh</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Direct 1-Click Action Buttons for WhatsApp & Facebook */}
+          <div className="flex flex-col sm:flex-row lg:flex-col gap-3 w-full lg:w-auto shrink-0">
+            {/* 1-Click WhatsApp Direct Chat */}
+            <a
+              href="https://wa.me/8801721779396?text=%E0%A6%A8%E0%A6%AE%E0%A6%B8%E0%A7%8D%E0%A6%95%E0%A6%BE%E0%A6%B0%2F%E0%A6%B9%E0%A7%8D%E0%A6%AF%E0%A6%BE%E0%A6%B2%E0%A7%8B%2C%20%E0%A6%B0%E0%A6%BF%E0%A6%A4%E0%A7%8D%E0%A6%A4%E0%A6%BF%E0%A6%95%E0%A6%BE%20%E0%A6%87%E0%A6%AD%E0%A7%87%E0%A6%A8%E0%A7%8D%E0%A6%9F%20%E0%A6%AE%E0%A7%8D%E0%A6%AF%E0%A6%BE%E0%A6%A8%E0%A7%87%E0%A6%9C%E0%A6%AE%E0%A7%87%E0%A6%A8%E0%A7%8D%E0%A6%9F%20%E0%A6%A5%E0%A7%87%E0%A6%95%E0%A7%87%20%E0%A6%87%E0%A6%AD%E0%A7%87%E0%A6%A8%E0%A7%8D%E0%A6%9F%20%E0%A6%A1%E0%A7%87%E0%A6%95%E0%A7%8B%E0%A6%B0%E0%A7%87%E0%A6%B6%E0%A6%A8%20%E0%A6%93%20%E0%A6%AC%E0%A7%81%E0%A6%95%E0%A6%BF%E0%A6%82%20%E0%A6%B8%E0%A6%82%E0%A6%95%E0%A7%8D%E0%A6%B0%E0%A6%BE%E0%A6%A8%E0%A7%8D%E0%A6%A4%20%E0%A6%A4%E0%A6%A5%E0%A7%8D%E0%A6%AF%20%E0%A6%9C%E0%A6%BE%E0%A6%A8%E0%A6%A4%E0%A7%87%20%E0%A6%9A%E0%A6%BE%E0%A6%87%E0%A7%A4"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-black text-xs uppercase shadow-lg shadow-emerald-900/30 hover:scale-[1.02] active:scale-98 transition duration-200 border border-emerald-400/40 cursor-pointer"
+            >
+              {/* WhatsApp Icon */}
+              <div className="w-6 h-6 rounded-full bg-white text-emerald-600 flex items-center justify-center font-bold">
+                <MessageCircle size={15} className="fill-emerald-600 text-white" />
+              </div>
+              <div className="text-left leading-tight">
+                <span className="text-[10px] text-emerald-100 font-bold block">১-ক্লিক হোয়াটসঅ্যাপ চ্যাট</span>
+                <span className="text-xs font-black tracking-wide">+880 1721-779396</span>
+              </div>
+            </a>
+
+            {/* 1-Click Facebook Page Link */}
+            <a
+              href="https://www.facebook.com/VRelegantshop"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs uppercase shadow-lg shadow-blue-900/30 hover:scale-[1.02] active:scale-98 transition duration-200 border border-blue-400/40 cursor-pointer"
+            >
+              {/* Facebook Icon */}
+              <div className="w-6 h-6 rounded-full bg-white text-blue-600 flex items-center justify-center font-bold">
+                <span className="font-sans font-black text-sm">f</span>
+              </div>
+              <div className="text-left leading-tight">
+                <span className="text-[10px] text-blue-100 font-bold block">অফিসিয়াল ফেসবুক পেজ</span>
+                <span className="text-xs font-black flex items-center gap-1">
+                  facebook.com/VRelegantshop
+                  <ExternalLink size={12} />
+                </span>
+              </div>
+            </a>
+          </div>
+
+        </div>
       </div>
 
       {/* 🌟 0. Decor Portfolio Showcase & Gallery Mode */}

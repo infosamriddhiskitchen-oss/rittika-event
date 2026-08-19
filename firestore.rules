@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if user is the Super Admin
+    function isSuperAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == 'info.vabnaorrittika@gmail.com' || 
+         request.auth.token.email == 'info.samriddhiskitchen@gmail.com');
+    }
+
+    // User profiles & credentials
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isSuperAdmin() || (isAuthenticated() && request.auth.uid == userId);
+    }
+
+    // ERP Core Business Collections: Stock, Purchases, Sales, Events, etc.
+    match /erp_data/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+      allow delete: if isSuperAdmin();
+    }
+
+    // Public Showcases, Portfolio & Online Bookings
+    match /public_bookings/{bookingId} {
+      allow create: if true;
+      allow read, update, delete: if isAuthenticated();
+    }
+
+    match /portfolio/{itemId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Fallback rule
+    match /{document=**} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+  }
+}

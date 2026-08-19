@@ -28,7 +28,10 @@ import {
   CheckCircle2,
   AlertCircle,
   Eye,
-  Share2
+  Share2,
+  MessageCircle,
+  ExternalLink,
+  Phone
 } from 'lucide-react';
 import { 
   StockItem, 
@@ -101,10 +104,10 @@ import ShareModal from './components/ShareModal';
 
 const DEFAULT_APPROVED_USERS: UserProfile[] = [
   {
-    id: 'user-admin-super',
-    email: 'info.samriddhiskitchen@gmail.com',
-    password: 'admin',
-    name: 'সমৃদ্ধিস কিচেন (Super Admin)',
+    id: 'user-admin-robin',
+    email: 'info.vabnaorrittika@gmail.com',
+    password: 'adminRobin',
+    name: 'Robin Kumar (Admin)',
     role: 'Admin',
     isApproved: true,
     provider: 'google',
@@ -112,21 +115,21 @@ const DEFAULT_APPROVED_USERS: UserProfile[] = [
     designation: 'মালিক ও প্রধান প্রশাসক'
   },
   {
-    id: 'user-manager-demo',
-    email: 'manager@rittikadecor.com',
-    password: 'manager123',
-    name: 'তানভীর আহমেদ (Manager)',
+    id: 'user-manager-zahangir',
+    email: 'zahangir.mhn@gmail.com',
+    password: 'managermhon',
+    name: 'Zahangir MhON (Manager)',
     role: 'Manager',
     isApproved: true,
     provider: 'email',
     createdAt: '2025-01-01T00:00:00Z',
-    designation: 'ইভেন্ট ও বিলিং ম্যানেজার'
+    designation: 'ইভেন্ট ও অপারেশন ম্যানেজার'
   },
   {
-    id: 'user-staff-demo',
-    email: 'staff@rittikadecor.com',
-    password: 'staff123',
-    name: 'করিম উল্লাহ (Staff)',
+    id: 'user-staff-ekon',
+    email: 'ekon@gmail.com',
+    password: 'asifkhan',
+    name: 'Ekon (Staff)',
     role: 'Staff',
     isApproved: true,
     provider: 'email',
@@ -136,10 +139,34 @@ const DEFAULT_APPROVED_USERS: UserProfile[] = [
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  // 🔐 Authentication & RBAC User Management - default to null (Guest) for new visitors
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    const saved = localStorage.getItem('erp_current_user');
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        if (u && u.isApproved) return u;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
 
-  // 🔐 Authentication & RBAC User Management
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(DEFAULT_APPROVED_USERS[0]);
+  // Default to Public Portal ('portal') for guest / new visitors, or restore if logged in
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const savedUser = localStorage.getItem('erp_current_user');
+    if (savedUser) {
+      try {
+        const u = JSON.parse(savedUser);
+        if (u && u.isApproved) return 'dashboard';
+      } catch {
+        return 'portal';
+      }
+    }
+    return 'portal';
+  });
+
   const [approvedUsers, setApprovedUsers] = useState<UserProfile[]>(DEFAULT_APPROVED_USERS);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -273,13 +300,46 @@ export default function App() {
     if (savedAttachments) setAttachments(JSON.parse(savedAttachments));
 
     if (savedUsers) {
-      setApprovedUsers(JSON.parse(savedUsers));
+      try {
+        const parsed: UserProfile[] = JSON.parse(savedUsers);
+        const merged = [...parsed];
+        DEFAULT_APPROVED_USERS.forEach(defUser => {
+          const idx = merged.findIndex(u => u.email.toLowerCase() === defUser.email.toLowerCase() || (u.role === defUser.role && (u.id.includes('admin') || u.id.includes('manager') || u.id.includes('staff'))));
+          if (idx !== -1) {
+            merged[idx] = { ...merged[idx], ...defUser };
+          } else {
+            merged.push(defUser);
+          }
+        });
+        setApprovedUsers(merged);
+        localStorage.setItem('erp_approved_users', JSON.stringify(merged));
+      } catch {
+        setApprovedUsers(DEFAULT_APPROVED_USERS);
+      }
     } else {
       localStorage.setItem('erp_approved_users', JSON.stringify(DEFAULT_APPROVED_USERS));
     }
 
     if (savedCurrentUser) {
-      setCurrentUser(JSON.parse(savedCurrentUser));
+      try {
+        const parsedCurrent: UserProfile = JSON.parse(savedCurrentUser);
+        if (parsedCurrent && parsedCurrent.isApproved) {
+          if (parsedCurrent.role === 'Admin' && (parsedCurrent.email.includes('samriddhi') || parsedCurrent.email.includes('vabnaorrittika'))) {
+            setCurrentUser(DEFAULT_APPROVED_USERS[0]);
+            localStorage.setItem('erp_current_user', JSON.stringify(DEFAULT_APPROVED_USERS[0]));
+          } else {
+            setCurrentUser(parsedCurrent);
+          }
+        } else {
+          setCurrentUser(null);
+        }
+      } catch {
+        setCurrentUser(null);
+        localStorage.removeItem('erp_current_user');
+      }
+    } else {
+      // Guest visitor
+      setCurrentUser(null);
     }
 
     const savedPurchaseInvoices = localStorage.getItem('erp_purchase_invoices');
@@ -344,6 +404,9 @@ export default function App() {
   const handleLogin = (user: UserProfile) => {
     setCurrentUser(user);
     localStorage.setItem('erp_current_user', JSON.stringify(user));
+    if (activeTab === 'portal') {
+      setActiveTab('dashboard');
+    }
     showToast(`স্বাগতম ${user.name}! (${user.role} হিসেবে লগইন সম্পন্ন)`);
   };
 
@@ -1646,6 +1709,42 @@ export default function App() {
 
       </div>
 
+      {/* 🌟 Floating 1-Click WhatsApp & Facebook Quick Action Widget (Always Accessible) */}
+      <div className="fixed bottom-5 right-5 z-40 flex flex-col gap-2.5 items-end no-print" id="floating-social-contact-bar">
+        {/* 1-Click WhatsApp Floating Pill */}
+        <a
+          href="https://wa.me/8801721779396?text=%E0%A6%A8%E0%A6%AE%E0%A6%B8%E0%A7%8D%E0%A6%95%E0%A6%BE%E0%A6%B0%2F%E0%A6%B9%E0%A7%8D%E0%A6%AF%E0%A6%BE%E0%A6%B2%E0%A7%8B%2C%20%E0%A6%B0%E0%A6%BF%E0%A6%A4%E0%A7%8D%E0%A6%A4%E0%A6%BF%E0%A6%95%E0%A6%BE%20%E0%A6%87%E0%A6%AD%E0%A7%87%E0%A6%A8%E0%A7%8D%E0%A6%9F%20%E0%A6%AE%E0%A7%8D%E0%A6%AF%E0%A6%BE%E0%A6%A8%E0%A7%87%E0%A6%9C%E0%A6%AE%E0%A7%87%E0%A6%A8%E0%A7%8D%E0%A6%9F%20%E0%A6%A5%E0%A7%87%E0%A6%95%E0%A7%87%20%E0%A6%87%E0%A6%AD%E0%A7%87%E0%A6%A8%E0%A7%8D%E0%A6%9F%20%E0%A6%A1%E0%A7%87%E0%A6%95%E0%A7%8B%E0%A6%B0%E0%A7%87%E0%A6%B6%E0%A6%A8%20%E0%A6%93%20%E0%A6%AC%E0%A7%81%E0%A6%95%E0%A6%BF%E0%A6%82%20%E0%A6%B8%E0%A6%82%E0%A6%95%E0%A7%8D%E0%A6%B0%E0%A6%BE%E0%A6%A8%E0%A7%8D%E0%A6%A4%20%E0%A6%A4%E0%A6%A5%E0%A7%8D%E0%A6%AF%20%E0%A6%9C%E0%A6%BE%E0%A6%A8%E0%A6%A4%E0%A7%87%20%E0%A6%9A%E0%A6%BE%E0%A6%87%E0%A7%A4"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="হোয়াটসঅ্যাপে মেসেজ পাঠান (01721779396)"
+          className="group flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white p-2.5 sm:px-4 sm:py-2.5 rounded-full shadow-xl shadow-emerald-950/30 border border-emerald-300/40 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
+        >
+          <div className="w-6 h-6 rounded-full bg-white text-emerald-600 flex items-center justify-center font-bold shrink-0 shadow-xs">
+            <MessageCircle size={15} className="fill-emerald-600 text-white" />
+          </div>
+          <span className="hidden sm:inline font-black text-xs uppercase tracking-tight">
+            WhatsApp: +880 1721-779396
+          </span>
+        </a>
+
+        {/* 1-Click Facebook Page Floating Pill */}
+        <a
+          href="https://www.facebook.com/VRelegantshop"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="ফেসবুক পেজ ভিজিট করুন (facebook.com/VRelegantshop)"
+          className="group flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white p-2.5 sm:px-4 sm:py-2.5 rounded-full shadow-xl shadow-blue-950/30 border border-blue-300/40 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
+        >
+          <div className="w-6 h-6 rounded-full bg-white text-blue-600 flex items-center justify-center font-black shrink-0 shadow-xs text-xs font-sans">
+            f
+          </div>
+          <span className="hidden sm:inline font-black text-xs uppercase tracking-tight flex items-center gap-1">
+            Facebook Page
+            <ExternalLink size={12} />
+          </span>
+        </a>
+      </div>
+
       {/* 🗑️ Reliable Global Delete Modal */}
       {pendingDelete && (
         <ConfirmDeleteModal
@@ -1653,6 +1752,7 @@ export default function App() {
           title={pendingDelete.title}
           message={pendingDelete.message}
           itemName={pendingDelete.itemName}
+          isSuperAdmin={isSuperAdmin}
           onConfirm={pendingDelete.onConfirm}
           onCancel={() => setPendingDelete(null)}
         />
