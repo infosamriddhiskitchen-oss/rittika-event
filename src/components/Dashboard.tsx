@@ -184,13 +184,13 @@ export default function Dashboard({
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-amber-400/20 to-rose-400/20 border border-amber-400/30 text-amber-300 text-xs font-black uppercase mb-3">
               <Sparkles size={13} className="text-amber-300 animate-spin" />
-              <span>ইভেন্ট ও রয়্যাল ডেকোরেশন ইআরপি</span>
+              <span>ইভেন্ট ম্যানেজমেন্ট হাব</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-rose-100 to-purple-100 uppercase tracking-tight">
-              রিত্তিকা ডেকোরেশন ইভেন্ট হাব
+              রিত্তিকা ইভেন্ট ম্যানেজমেন্ট
             </h2>
             <p className="text-slate-300 font-medium text-xs sm:text-sm mt-1 max-w-2xl leading-relaxed">
-              আপনার বিয়ের স্টেজ, লাইটিং, ফ্লাওয়ার আর্চ, ডেকোরেশন সামগ্রীর স্টক, ভাড়া, সরাসরি বিক্রি ও লাভ-ক্ষতির পূর্ণ নিয়ন্ত্রণ।
+              আপনার বিয়ের স্টেজ, লাইটিং, ফ্লাওয়ার আর্চ, ইভেন্ট সামগ্রীর স্টক, ভাড়া, সরাসরি বিক্রি ও লাভ-ক্ষতির পূর্ণ নিয়ন্ত্রণ।
             </p>
           </div>
           <div className="flex gap-3 flex-wrap relative z-10">

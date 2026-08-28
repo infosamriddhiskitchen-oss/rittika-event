@@ -255,7 +255,7 @@ export default function AuthModal({
               নিরাপদ লগইন ও অথেন্টিকেশন
             </h3>
             <p className="text-xs font-medium text-slate-500 mt-0.5">
-              রিত্তিকা ইভেন্ট ম্যানেজমেন্ট ইআরপি (Rittika ERP Security)
+              রিত্তিকা ইভেন্ট ম্যানেজমেন্ট (Rittika Event Management Security)
             </p>
           </div>
         </div>

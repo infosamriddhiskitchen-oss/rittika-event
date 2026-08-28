@@ -1,13 +1,14 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import QRCode from 'qrcode';
 import { 
   Folder, FileText, Search, Plus, Upload, Download, Printer, Share2, 
   Trash2, Eye, ShieldCheck, Mail, Send, Check, RefreshCw, Layers, CheckSquare, 
   DollarSign, FileSpreadsheet, Sparkles, PenTool, X, ChevronRight, User, Calendar,
-  Calculator, Tag, CheckCircle2, ArrowRight, Clock, Edit3, AlertCircle, Coins, PlusCircle
+  Calculator, Tag, CheckCircle2, ArrowRight, Clock, Edit3, AlertCircle, Coins, PlusCircle, QrCode as QrIcon
 } from 'lucide-react';
 import { 
   StockItem, Customer, Supplier, PurchaseEntry, SalesEntry, RentalOutEntry, EventEntry, Attachment,
-  PurchaseInvoice, SalesInvoice, RentalInvoice, EventInvoice, EventQuotation, QuotationItem
+  PurchaseInvoice, SalesInvoice, RentalInvoice, EventInvoice, EventQuotation, QuotationItem, EventExtraItem
 } from '../types';
 import { formatCurrency, toBengaliNumber } from '../utils';
 
@@ -93,10 +94,53 @@ export default function InvoiceHub({
   } | null>(null);
 
   // Digital signature configuration
-  const [typedSignature, setTypedSignature] = useState('রিত্তিকা ডেকোরেশন');
+  const [typedSignature, setTypedSignature] = useState('রিত্তিকা ইভেন্ট ম্যানেজমেন্ট');
   const [selectedSigFont, setSelectedSigFont] = useState<'font-serif' | 'font-sans' | 'font-mono'>('font-serif');
   const [canvasSignature, setCanvasSignature] = useState<string | null>(null);
   const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Dynamic QR Code generation for current preview invoice
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (!previewInvoice) {
+      setQrDataUrl('');
+      return;
+    }
+    const invData = previewInvoice.data;
+    const invNo = previewInvoice.type === 'quotations' 
+      ? invData.quotationNo 
+      : (invData.invoiceNo || invData.purchaseNo || previewInvoice.id);
+    const client = invData.customerName || invData.supplierName || 'General Client';
+    const amount = previewInvoice.type === 'quotations'
+      ? invData.grandTotal
+      : (invData.netPayable || invData.totalBill || invData.totalCost || invData.grandTotal || invData.totalAmount || 0);
+    const date = invData.date || new Date().toISOString().slice(0, 10);
+    
+    const qrPayload = [
+      `ORGANIZATION: RITTIKA EVENT MANAGEMENT`,
+      `TYPE: ${previewInvoice.type.toUpperCase()}`,
+      `DOC NO: ${invNo}`,
+      `CLIENT: ${client}`,
+      `DATE: ${date}`,
+      `AMOUNT: BDT ${amount}`,
+      `VERIFICATION: GENUINE & VERIFIED BY REM`,
+      `SUPPORT: +880 1721-779396`,
+      `LOCATION: Bheramara, Kushtia, Bangladesh`
+    ].join('\n');
+
+    QRCode.toDataURL(qrPayload, {
+      width: 256,
+      margin: 1,
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff'
+      },
+      errorCorrectionLevel: 'M'
+    })
+      .then(url => setQrDataUrl(url))
+      .catch(err => console.error('Failed to generate invoice QR code:', err));
+  }, [previewInvoice]);
 
   // 📝 MODULE 31: EVENT BUDGET QUOTATION BUILDER STATE
   const [isCreatingQuotation, setIsCreatingQuotation] = useState(false);
@@ -147,6 +191,48 @@ export default function InvoiceHub({
   );
   const [qNotes, setQNotes] = useState('');
 
+  // 🌟 MODULE 33: EVENT COMPLETION FINAL INVOICE BUILDER STATE
+  const [isCreatingFinalInvoice, setIsCreatingFinalInvoice] = useState(false);
+  const [finalInvNo, setFinalInvNo] = useState(`FIN-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-${Date.now().toString().slice(-4)}`);
+  const [finalInvDate, setFinalInvDate] = useState(new Date().toISOString().split('T')[0]);
+  const [finalSelectedQuotationId, setFinalSelectedQuotationId] = useState('');
+  const [finalSelectedEventId, setFinalSelectedEventId] = useState('');
+  const [finalEventName, setFinalEventName] = useState('');
+  const [finalEventDate, setFinalEventDate] = useState(new Date().toISOString().split('T')[0]);
+  const [finalVenue, setFinalVenue] = useState('');
+  const [finalCustomerId, setFinalCustomerId] = useState('');
+  const [finalCustomerName, setFinalCustomerName] = useState('');
+  const [finalCustomerMobile, setFinalCustomerMobile] = useState('');
+  const [finalCustomerAddress, setFinalCustomerAddress] = useState('');
+  const [finalBaseBudget, setFinalBaseBudget] = useState(0);
+  const [finalAdvancePaid, setFinalAdvancePaid] = useState(0);
+  const [finalAdvanceDate, setFinalAdvanceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [finalAdvanceMethod, setFinalAdvanceMethod] = useState('বিকাশ (bKash)');
+
+  // Extra Work Items List for Final Bill
+  const [finalExtraItems, setFinalExtraItems] = useState<EventExtraItem[]>([]);
+  const [curExtraName, setCurExtraName] = useState('');
+  const [curExtraQty, setCurExtraQty] = useState(1);
+  const [curExtraUnit, setCurExtraUnit] = useState('সেট');
+  const [curExtraRate, setCurExtraRate] = useState(0);
+  const [curExtraNote, setCurExtraNote] = useState('');
+
+  // Extra Transport, Labour, Damage charge, Discount, and Settlement Status
+  const [finalExtraTransport, setFinalExtraTransport] = useState(0);
+  const [finalExtraLabour, setFinalExtraLabour] = useState(0);
+  const [finalDamageCharge, setFinalDamageCharge] = useState(0);
+  const [finalDiscount, setFinalDiscount] = useState(0);
+  const [finalPaymentStatus, setFinalPaymentStatus] = useState<'Paid' | 'Partial' | 'Due'>('Paid');
+  const [finalPaymentMethod, setFinalPaymentMethod] = useState('নগদ (Cash)');
+  const [finalTerms, setFinalTerms] = useState(
+    '১. ইভেন্ট চুক্তি ও পরিকল্পনা অনুযায়ী সফলভাবে সম্পন্ন হয়েছে।\n' +
+    '২. ক্লায়েন্টের চাহিদা অনুযায়ী অতিরিক্ত মালামাল ও সেবার বিল মূল বাজেটের সাথে সমন্বয় করা হয়েছে।\n' +
+    '৩. প্রদত্ত অগ্রিম কর্তনের পর অবশিষ্ট প্রদেয় বকেয়া বিল তাৎক্ষণিক পরিশোধযোগ্য।\n' +
+    '৪. মালামাল অক্ষত অবস্থায় ফেরত নেওয়া হয়েছে / নির্ধারিত ক্ষতিপূরণ সমন্বয় করা হয়েছে।\n' +
+    '৫. রিত্তিকা ইভেন্ট ম্যানেজমেন্টের সেবা গ্রহণ করার জন্য ধন্যবাদ।'
+  );
+  const [finalNotes, setFinalNotes] = useState('');
+
   // Purchase Form fields
   const [purchaseNo, setPurchaseNo] = useState(`PO-${Date.now().toString().slice(-6)}`);
   const [invoiceNo, setInvoiceNo] = useState(`INV-${Date.now().toString().slice(-6)}`);
@@ -161,20 +247,72 @@ export default function InvoiceHub({
   const [pBase64File, setPBase64File] = useState<string | null>(null);
   const [pFileName, setPFileName] = useState('');
 
-  // Auto Generate Sales Invoice Setup
+  // Auto Generate / Custom Sales Invoice Setup
+  const [salesInvoiceMode, setSalesInvoiceMode] = useState<'existing' | 'custom'>('existing');
   const [selectedSaleId, setSelectedSaleId] = useState('');
   const [salesDiscount, setSalesDiscount] = useState(0);
+  // Custom Sales fields
+  const [customSaleDate, setCustomSaleDate] = useState(new Date().toISOString().split('T')[0]);
+  const [customSaleCustomerName, setCustomSaleCustomerName] = useState('');
+  const [customSaleCustomerMobile, setCustomSaleCustomerMobile] = useState('');
+  const [customSaleCustomerAddress, setCustomSaleCustomerAddress] = useState('');
+  const [customSaleItemName, setCustomSaleItemName] = useState('');
+  const [customSaleQty, setCustomSaleQty] = useState(1);
+  const [customSaleUnit, setCustomSaleUnit] = useState('পিস');
+  const [customSaleRate, setCustomSaleRate] = useState(0);
+  const [customSaleDiscount, setCustomSaleDiscount] = useState(0);
+  const [customSalePaid, setCustomSalePaid] = useState(0);
+  const [customSalePaymentMethod, setCustomSalePaymentMethod] = useState('নগদ (Cash)');
+  const [customSaleNote, setCustomSaleNote] = useState('');
 
-  // Auto Generate Rental Invoice Setup
+  // Auto Generate / Custom Rental Invoice Setup
+  const [rentalInvoiceMode, setRentalInvoiceMode] = useState<'existing' | 'custom'>('existing');
   const [selectedRentalId, setSelectedRentalId] = useState('');
   const [securityDeposit, setSecurityDeposit] = useState(0);
   const [transportCharge, setTransportCharge] = useState(0);
   const [labourCharge, setLabourCharge] = useState(0);
+  // Custom Rental fields
+  const [customRentalDate, setCustomRentalDate] = useState(new Date().toISOString().split('T')[0]);
+  const [customRentalEventDate, setCustomRentalEventDate] = useState(new Date().toISOString().split('T')[0]);
+  const [customRentalCustomerName, setCustomRentalCustomerName] = useState('');
+  const [customRentalCustomerMobile, setCustomRentalCustomerMobile] = useState('');
+  const [customRentalCustomerAddress, setCustomRentalCustomerAddress] = useState('');
+  const [customRentalEventName, setCustomRentalEventName] = useState('');
+  const [customRentalVenue, setCustomRentalVenue] = useState('');
+  const [customRentalItemName, setCustomRentalItemName] = useState('');
+  const [customRentalQty, setCustomRentalQty] = useState(1);
+  const [customRentalUnit, setCustomRentalUnit] = useState('পিস');
+  const [customRentalRate, setCustomRentalRate] = useState(0);
+  const [customRentalDays, setCustomRentalDays] = useState(1);
+  const [customRentalDeposit, setCustomRentalDeposit] = useState(0);
+  const [customRentalTransport, setCustomRentalTransport] = useState(0);
+  const [customRentalLabour, setCustomRentalLabour] = useState(0);
+  const [customRentalPaid, setCustomRentalPaid] = useState(0);
+  const [customRentalPaymentMethod, setCustomRentalPaymentMethod] = useState('নগদ (Cash)');
+  const [customRentalNote, setCustomRentalNote] = useState('');
 
-  // Auto Generate Event Invoice Setup
+  // Auto Generate / Custom Event Invoice Setup
+  const [eventInvoiceMode, setEventInvoiceMode] = useState<'existing' | 'custom'>('existing');
   const [selectedEventId, setSelectedEventId] = useState('');
   const [eventExtraCharge, setEventExtraCharge] = useState(0);
   const [eventExtraDetails, setEventExtraDetails] = useState('');
+  // Custom Event fields
+  const [customEventDate, setCustomEventDate] = useState(new Date().toISOString().split('T')[0]);
+  const [customEventEventDate, setCustomEventEventDate] = useState(new Date().toISOString().split('T')[0]);
+  const [customEventName, setCustomEventName] = useState('');
+  const [customEventVenue, setCustomEventVenue] = useState('');
+  const [customEventCustomerName, setCustomEventCustomerName] = useState('');
+  const [customEventCustomerMobile, setCustomEventCustomerMobile] = useState('');
+  const [customEventCustomerAddress, setCustomEventCustomerAddress] = useState('');
+  const [customEventPackage, setCustomEventPackage] = useState('');
+  const [customEventBudget, setCustomEventBudget] = useState(0);
+  const [customEventTransport, setCustomEventTransport] = useState(0);
+  const [customEventLabour, setCustomEventLabour] = useState(0);
+  const [customEventExtraCharge, setCustomEventExtraCharge] = useState(0);
+  const [customEventExtraDetails, setCustomEventExtraDetails] = useState('');
+  const [customEventPaid, setCustomEventPaid] = useState(0);
+  const [customEventPaymentMethod, setCustomEventPaymentMethod] = useState('নগদ (Cash)');
+  const [customEventNotes, setCustomEventNotes] = useState('');
 
   // Handle Canvas Drawing for Digital Signature
   const [isDrawing, setIsDrawing] = useState(false);
@@ -285,9 +423,7 @@ export default function InvoiceHub({
 
   // Add Item to Quotation
   const handleAddQuotationItem = () => {
-    const category = curCategoryOption === 'অন্যান্য / কাস্টম ক্যাটাগরি' 
-      ? (customCategoryText.trim() || 'অন্যান্য') 
-      : curCategoryOption;
+    const category = (curCategoryOption === 'অন্যান্য / কাস্টম ক্যাটাগরি' ? customCategoryText.trim() : (customCategoryText.trim() || curCategoryOption.trim())) || 'সাধারণ আইটেম';
 
     if (!curItemName.trim()) {
       alert('দয়া করে আইটেম বা সামগ্রীর নাম লিখুন!');
@@ -490,7 +626,7 @@ export default function InvoiceHub({
     }
   };
 
-  // Sales invoice auto generator
+  // Sales invoice auto generator (From Existing Records)
   const handleAutoGenerateSalesInvoice = () => {
     const targetSale = sales.find(s => s.id === selectedSaleId);
     if (!targetSale) {
@@ -530,7 +666,52 @@ export default function InvoiceHub({
     alert('বিক্রয় ইনভয়েস সফলভাবে জেনারেট হয়েছে!');
   };
 
-  // Rental invoice auto generator
+  // Custom Sales Invoice Creator (Manual / Free-text Input)
+  const handleCreateCustomSalesInvoice = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customSaleCustomerName.trim() || !customSaleItemName.trim() || customSaleQty <= 0 || customSaleRate <= 0) {
+      alert('দয়া করে কাস্টমারের নাম, আইটেম, পরিমাণ এবং বিক্রয় দর সঠিকভাবে লিখুন!');
+      return;
+    }
+
+    const subtotal = Number(customSaleQty) * Number(customSaleRate);
+    const grand = Math.max(0, subtotal - Number(customSaleDiscount || 0));
+
+    onAddSalesInvoice({
+      invoiceNo: `SAL-${Date.now().toString().slice(-6)}`,
+      date: customSaleDate || new Date().toISOString().split('T')[0],
+      customerName: customSaleCustomerName.trim(),
+      customerMobile: customSaleCustomerMobile.trim() || '০১৭০০০০০০০০',
+      customerAddress: customSaleCustomerAddress.trim() || 'কুষ্টিয়া, বাংলাদেশ',
+      items: [
+        {
+          name: customSaleItemName.trim(),
+          qty: Number(customSaleQty),
+          rate: Number(customSaleRate),
+          total: subtotal
+        }
+      ],
+      subtotal,
+      discount: Number(customSaleDiscount || 0),
+      grandTotal: grand,
+      qrData: `InvoiceNo: SAL-${Date.now().toString().slice(-6)}\nCustomer: ${customSaleCustomerName}\nTotal: ${grand} BDT`,
+      signatureUrl: canvasSignature || undefined
+    });
+
+    // Reset fields
+    setCustomSaleCustomerName('');
+    setCustomSaleCustomerMobile('');
+    setCustomSaleCustomerAddress('');
+    setCustomSaleItemName('');
+    setCustomSaleQty(1);
+    setCustomSaleRate(0);
+    setCustomSaleDiscount(0);
+    setCustomSalePaid(0);
+    setCustomSaleNote('');
+    alert('কাস্টম বিক্রয় ইনভয়েস সফলভাবে তৈরি ও সংরক্ষিত হয়েছে!');
+  };
+
+  // Rental invoice auto generator (From Existing Records)
   const handleAutoGenerateRentalInvoice = () => {
     const targetRental = rentals.find(r => r.id === selectedRentalId);
     if (!targetRental) {
@@ -574,7 +755,60 @@ export default function InvoiceHub({
     alert('ভাড়া ইনভয়েস সফলভাবে জেনারেট হয়েছে!');
   };
 
-  // Event invoice auto generator
+  // Custom Rental Invoice Creator (Manual / Free-text Input)
+  const handleCreateCustomRentalInvoice = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customRentalCustomerName.trim() || !customRentalItemName.trim() || customRentalQty <= 0 || customRentalRate <= 0) {
+      alert('দয়া করে গ্রাহকের নাম, ভাড়ার সামগ্রী, পরিমাণ এবং ভাড়া রেট সঠিকভাবে লিখুন!');
+      return;
+    }
+
+    const itemsCost = Number(customRentalQty) * Number(customRentalRate) * Number(customRentalDays || 1);
+    const grand = itemsCost + Number(customRentalTransport || 0) + Number(customRentalLabour || 0);
+    const paid = Number(customRentalPaid || 0);
+
+    onAddRentalInvoice({
+      invoiceNo: `RNT-${Date.now().toString().slice(-6)}`,
+      date: customRentalDate || new Date().toISOString().split('T')[0],
+      customerName: customRentalCustomerName.trim(),
+      customerMobile: customRentalCustomerMobile.trim() || '০১৭০০০০০০০০',
+      eventName: customRentalEventName.trim() || `ইভেন্ট তারিখ: ${customRentalEventDate}`,
+      items: [
+        {
+          name: customRentalItemName.trim(),
+          qty: Number(customRentalQty),
+          rate: Number(customRentalRate),
+          total: itemsCost
+        }
+      ],
+      rentalCharges: itemsCost,
+      securityDeposit: Number(customRentalDeposit || 0),
+      transportCharge: Number(customRentalTransport || 0),
+      labourCharge: Number(customRentalLabour || 0),
+      totalBill: grand,
+      paidAmount: paid,
+      dueAmount: Math.max(0, grand - paid)
+    });
+
+    // Reset fields
+    setCustomRentalCustomerName('');
+    setCustomRentalCustomerMobile('');
+    setCustomRentalCustomerAddress('');
+    setCustomRentalEventName('');
+    setCustomRentalVenue('');
+    setCustomRentalItemName('');
+    setCustomRentalQty(1);
+    setCustomRentalRate(0);
+    setCustomRentalDays(1);
+    setCustomRentalDeposit(0);
+    setCustomRentalTransport(0);
+    setCustomRentalLabour(0);
+    setCustomRentalPaid(0);
+    setCustomRentalNote('');
+    alert('কাস্টম ভাড়া ইনভয়েস সফলভাবে তৈরি ও সংরক্ষিত হয়েছে!');
+  };
+
+  // Event invoice auto generator (From Existing Records)
   const handleAutoGenerateEventInvoice = () => {
     const targetEvent = events.find(e => e.id === selectedEventId);
     if (!targetEvent) {
@@ -619,6 +853,310 @@ export default function InvoiceHub({
     setEventExtraCharge(0);
     setEventExtraDetails('');
     alert('ইভেন্ট ইনভয়েস সফলভাবে জেনারেট হয়েছে!');
+  };
+
+  // Custom Event Invoice Creator (Manual / Free-text Input)
+  const handleCreateCustomEventInvoice = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customEventCustomerName.trim() || !customEventName.trim() || customEventBudget <= 0) {
+      alert('দয়া করে ক্লায়েন্টের নাম, ইভেন্টের নাম এবং মূল বাজেট সঠিকভাবে লিখুন!');
+      return;
+    }
+
+    const total = Number(customEventBudget) + Number(customEventTransport || 0) + Number(customEventLabour || 0) + Number(customEventExtraCharge || 0);
+
+    onAddEventInvoice({
+      invoiceNo: `EVT-${Date.now().toString().slice(-6)}`,
+      date: customEventDate || new Date().toISOString().split('T')[0],
+      eventName: customEventName.trim(),
+      eventDate: customEventEventDate || customEventDate,
+      venue: customEventVenue.trim() || 'ক্লায়েন্ট ভেন্যু',
+      customerName: customEventCustomerName.trim(),
+      customerMobile: customEventCustomerMobile.trim() || '০১৭০০০০০০০০',
+      decorationPackage: customEventPackage.trim() || customEventName.trim(),
+      materialsUsed: [
+        {
+          name: customEventPackage.trim() || 'কাস্টম ডেকোরেশন ও স্টেজ প্যাকেজ',
+          qty: 1
+        }
+      ],
+      labourCost: Number(customEventLabour || 0),
+      transportCost: Number(customEventTransport || 0),
+      extraCharges: Number(customEventExtraCharge || 0),
+      totalCost: total
+    });
+
+    // Reset fields
+    setCustomEventName('');
+    setCustomEventVenue('');
+    setCustomEventCustomerName('');
+    setCustomEventCustomerMobile('');
+    setCustomEventCustomerAddress('');
+    setCustomEventPackage('');
+    setCustomEventBudget(0);
+    setCustomEventTransport(0);
+    setCustomEventLabour(0);
+    setCustomEventExtraCharge(0);
+    setCustomEventExtraDetails('');
+    setCustomEventPaid(0);
+    setCustomEventNotes('');
+    alert('কাস্টম ইভেন্ট ইনভয়েস সফলভাবে তৈরি ও সংরক্ষিত হয়েছে!');
+  };
+
+  // 🌟 MODULE 33: FINAL EVENT INVOICE CALCULATIONS & HANDLERS
+  const finalExtraWorkCost = useMemo(() => {
+    return finalExtraItems.reduce((sum, item) => sum + (item.total || (item.qty * item.rate)), 0);
+  }, [finalExtraItems]);
+
+  const finalExtraChargesTotal = useMemo(() => {
+    return Number(finalExtraTransport || 0) + Number(finalExtraLabour || 0) + Number(finalDamageCharge || 0);
+  }, [finalExtraTransport, finalExtraLabour, finalDamageCharge]);
+
+  const finalNetPayable = useMemo(() => {
+    return Math.max(0, Number(finalBaseBudget || 0) + finalExtraWorkCost + finalExtraChargesTotal - Number(finalDiscount || 0));
+  }, [finalBaseBudget, finalExtraWorkCost, finalExtraChargesTotal, finalDiscount]);
+
+  const finalDueAmount = useMemo(() => {
+    return Math.max(0, finalNetPayable - Number(finalAdvancePaid || 0));
+  }, [finalNetPayable, finalAdvancePaid]);
+
+  const EXTRA_WORK_PRESETS = [
+    { name: 'অতিরিক্ত আলোকসজ্জা ও ফ্লাডলাইট সেটআপ', qty: 1, unit: 'সেট', rate: 2500, note: 'ক্লায়েন্টের তাৎক্ষণিক চাহিদামতো অতিরিক্ত ৩টি হ্যালোজেন ও ২টি মুভিং হেড' },
+    { name: 'অতিরিক্ত ৫০টি ভিআইপি কুশন চেয়ার ও বো কভার', qty: 50, unit: 'পিস', rate: 40, note: 'অতিথি সংখ্যা বৃদ্ধির কারণে অতিরিক্ত চেয়ার ও সিল্ক কভার' },
+    { name: 'স্টেজ ও গেটে অতিরিক্ত তাজা ফুল ডেকোরেশন', qty: 1, unit: 'প্যাকেজ', rate: 4500, note: 'আমদানি করা রজনীগন্ধা ও থাই গোলাপের এক্সক্লুসিভ অতিরিক্ত কাজ' },
+    { name: 'অতিরিক্ত ৪ ঘণ্টা জেনারেটর ব্যাকআপ ও জ্বালানি', qty: 4, unit: 'ঘণ্টা', rate: 800, note: 'ইভেন্টের সময়সীমা বৃদ্ধিজনিত ডিজেল ও ব্যাকআপ খরচ' },
+    { name: 'অতিরিক্ত এলইডি স্ক্রিন ও লাইভ ক্যামেরা ফিড', qty: 1, unit: 'সেট', rate: 6000, note: 'সাইড ভেন্যুর জন্য অতিরিক্ত ১০x৮ ফিট এলইডি ওয়াল' },
+    { name: 'ইভেন্ট ক্রু ও টেকনিশিয়ান নাইট ওভারটাইম মজুরি', qty: 4, unit: 'জন', rate: 500, note: 'রাত ১২টার পর অতিরিক্ত সেটআপ ও আনলোডিং ওভারটাইম' }
+  ];
+
+  // Open Final Invoice Builder
+  const handleOpenFinalInvoice = (targetQuotation?: EventQuotation, targetEvent?: EventEntry) => {
+    const invNumber = `FIN-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-${Date.now().toString().slice(-4)}`;
+    setFinalInvNo(invNumber);
+    setFinalInvDate(new Date().toISOString().split('T')[0]);
+    setFinalExtraItems([]);
+    setCurExtraName('');
+    setCurExtraQty(1);
+    setCurExtraUnit('সেট');
+    setCurExtraRate(0);
+    setCurExtraNote('');
+    setFinalExtraTransport(0);
+    setFinalExtraLabour(0);
+    setFinalDamageCharge(0);
+    setFinalDiscount(0);
+    setFinalPaymentStatus('Paid');
+    setFinalPaymentMethod('নগদ (Cash)');
+    setFinalNotes('');
+    setFinalTerms(
+      '১. ইভেন্ট চুক্তি ও পরিকল্পনা অনুযায়ী সফলভাবে সম্পন্ন হয়েছে।\n' +
+      '২. ক্লায়েন্টের চাহিদা অনুযায়ী অতিরিক্ত মালামাল ও সেবার বিল মূল বাজেটের সাথে সমন্বয় করা হয়েছে।\n' +
+      '৩. প্রদত্ত অগ্রিম কর্তনের পর অবশিষ্ট প্রদেয় বকেয়া বিল তাৎক্ষণিক পরিশোধযোগ্য।\n' +
+      '৪. মালামাল অক্ষত অবস্থায় ফেরত নেওয়া হয়েছে / নির্ধারিত ক্ষতিপূরণ সমন্বয় করা হয়েছে।\n' +
+      '৫. রিত্তিকা ইভেন্ট ম্যানেজমেন্টের সেবা গ্রহণ করার জন্য ধন্যবাদ।'
+    );
+
+    if (targetQuotation) {
+      setFinalSelectedQuotationId(targetQuotation.id);
+      setFinalSelectedEventId('');
+      setFinalEventName(targetQuotation.eventName);
+      setFinalEventDate(targetQuotation.eventDate || targetQuotation.date);
+      setFinalVenue(targetQuotation.venue || '');
+      setFinalCustomerId(targetQuotation.customerId || '');
+      setFinalCustomerName(targetQuotation.customerName);
+      setFinalCustomerMobile(targetQuotation.customerMobile);
+      setFinalCustomerAddress(targetQuotation.customerAddress || '');
+      setFinalBaseBudget(targetQuotation.grandTotal || 0);
+      setFinalAdvancePaid(targetQuotation.advanceRequired || 0);
+      setFinalAdvanceDate(targetQuotation.date);
+    } else if (targetEvent) {
+      setFinalSelectedQuotationId('');
+      setFinalSelectedEventId(targetEvent.id);
+      setFinalEventName(targetEvent.name);
+      setFinalEventDate(targetEvent.date);
+      setFinalVenue(targetEvent.note || 'গ্রাহক ভেন্যু');
+      const cust = customers.find(c => c.id === targetEvent.customerId);
+      setFinalCustomerId(targetEvent.customerId);
+      setFinalCustomerName(cust ? cust.name : 'গ্রাহক');
+      setFinalCustomerMobile(cust ? cust.mobile : '');
+      setFinalCustomerAddress(cust ? cust.address : '');
+      setFinalBaseBudget(targetEvent.budget || 0);
+      setFinalAdvancePaid(targetEvent.paidAmount || 0);
+      setFinalAdvanceDate(targetEvent.date);
+    } else {
+      setFinalSelectedQuotationId('');
+      setFinalSelectedEventId('');
+      setFinalEventName('');
+      setFinalEventDate(new Date().toISOString().split('T')[0]);
+      setFinalVenue('');
+      setFinalCustomerId('');
+      setFinalCustomerName('');
+      setFinalCustomerMobile('');
+      setFinalCustomerAddress('');
+      setFinalBaseBudget(0);
+      setFinalAdvancePaid(0);
+      setFinalAdvanceDate(new Date().toISOString().split('T')[0]);
+    }
+
+    setIsCreatingQuotation(false);
+    setIsCreatingFinalInvoice(true);
+    setActiveTab('quotations');
+    setPreviewInvoice(null);
+  };
+
+  const handleQuotationSelectForFinal = (qId: string) => {
+    setFinalSelectedQuotationId(qId);
+    if (!qId) return;
+    const q = quotations.find(item => item.id === qId);
+    if (q) {
+      setFinalEventName(q.eventName);
+      setFinalEventDate(q.eventDate || q.date);
+      setFinalVenue(q.venue || 'গ্রাহক ভেন্যু');
+      setFinalCustomerId(q.customerId || '');
+      setFinalCustomerName(q.customerName);
+      setFinalCustomerMobile(q.customerMobile);
+      setFinalCustomerAddress(q.customerAddress || '');
+      setFinalBaseBudget(q.grandTotal || 0);
+      setFinalAdvancePaid(q.advanceRequired || 0);
+      setFinalAdvanceDate(q.date);
+    }
+  };
+
+  const handleEventSelectForFinal = (eId: string) => {
+    setFinalSelectedEventId(eId);
+    if (!eId) return;
+    const ev = events.find(item => item.id === eId);
+    if (ev) {
+      setFinalEventName(ev.name);
+      setFinalEventDate(ev.date);
+      setFinalVenue(ev.note || 'গ্রাহক ভেন্যু');
+      const cust = customers.find(c => c.id === ev.customerId);
+      setFinalCustomerId(ev.customerId);
+      setFinalCustomerName(cust ? cust.name : 'গ্রাহক');
+      setFinalCustomerMobile(cust ? cust.mobile : '');
+      setFinalCustomerAddress(cust ? cust.address : '');
+      setFinalBaseBudget(ev.budget || 0);
+      setFinalAdvancePaid(ev.paidAmount || 0);
+      setFinalAdvanceDate(ev.date);
+    }
+  };
+
+  const handleAddExtraItem = () => {
+    if (!curExtraName.trim()) {
+      alert('দয়া করে অতিরিক্ত কাজের নাম বা বিবরণ লিখুন!');
+      return;
+    }
+    if (curExtraRate < 0 || curExtraQty <= 0) {
+      alert('সঠিক পরিমাণ ও দর উল্লেখ করুন!');
+      return;
+    }
+
+    const newItem: EventExtraItem = {
+      id: `ext-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      name: curExtraName.trim(),
+      qty: Number(curExtraQty),
+      unit: curExtraUnit.trim() || 'পিস',
+      rate: Number(curExtraRate) || 0,
+      total: (Number(curExtraQty) || 1) * (Number(curExtraRate) || 0),
+      note: curExtraNote.trim() || undefined
+    };
+
+    setFinalExtraItems(prev => [...prev, newItem]);
+    setCurExtraName('');
+    setCurExtraQty(1);
+    setCurExtraRate(0);
+    setCurExtraNote('');
+  };
+
+  const handleRemoveExtraItem = (itemId: string) => {
+    setFinalExtraItems(prev => prev.filter(i => i.id !== itemId));
+  };
+
+  const handleApplyExtraPreset = (preset: { name: string; qty: number; unit: string; rate: number; note: string }) => {
+    const newItem: EventExtraItem = {
+      id: `ext-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      name: preset.name,
+      qty: preset.qty,
+      unit: preset.unit,
+      rate: preset.rate,
+      total: preset.qty * preset.rate,
+      note: preset.note
+    };
+    setFinalExtraItems(prev => [...prev, newItem]);
+  };
+
+  const handleSaveFinalInvoice = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!finalCustomerName.trim() && !finalEventName.trim()) {
+      alert('দয়া করে গ্রাহক ও ইভেন্টের নাম প্রদান করুন!');
+      return;
+    }
+
+    const linkedQuotation = quotations.find(q => q.id === finalSelectedQuotationId);
+
+    const payload: Omit<EventInvoice, 'id'> = {
+      invoiceNo: finalInvNo || `FIN-${Date.now().toString().slice(-6)}`,
+      date: finalInvDate,
+      eventId: finalSelectedEventId || `EVT-${Date.now()}`,
+      eventName: finalEventName || 'সম্পন্ন ইভেন্ট',
+      eventDate: finalEventDate,
+      venue: finalVenue || 'গ্রাহক ভেন্যু',
+      customerId: finalCustomerId || `CUST-${Date.now()}`,
+      customerName: finalCustomerName || 'গ্রাহক',
+      customerMobile: finalCustomerMobile || '',
+      customerAddress: finalCustomerAddress || 'রথপাড়া, ভেড়ামারা, কুষ্টিয়া',
+      decorationPackage: finalEventName || 'সম্পূর্ণ ইভেন্ট ডেকোরেশন',
+      materialsUsed: [],
+      labourCost: Number(finalExtraLabour) || 0,
+      transportCost: Number(finalExtraTransport) || 0,
+      extraCharges: finalExtraChargesTotal,
+      totalCost: finalNetPayable,
+
+      // Final Bill Properties
+      quotationId: finalSelectedQuotationId || undefined,
+      quotationNo: linkedQuotation ? linkedQuotation.quotationNo : undefined,
+      baseBudget: Number(finalBaseBudget) || 0,
+      advancePaid: Number(finalAdvancePaid) || 0,
+      advancePaymentDate: finalAdvanceDate,
+      advancePaymentMethod: finalAdvanceMethod,
+      extraItems: finalExtraItems,
+      extraWorkCost: finalExtraWorkCost,
+      extraChargesDetails: `পরিবহন: ৳${finalExtraTransport}, লেবার: ৳${finalExtraLabour}${finalDamageCharge > 0 ? `, ক্ষতিপূরণ: ৳${finalDamageCharge}` : ''}`,
+      discount: Number(finalDiscount) || 0,
+      damageDeduction: Number(finalDamageCharge) || 0,
+      netPayable: finalNetPayable,
+      dueAmount: finalDueAmount,
+      paymentStatus: finalPaymentStatus,
+      paymentMethod: finalPaymentMethod,
+      termsAndConditions: finalTerms,
+      notes: finalNotes,
+      qrData: `Final Invoice: ${finalInvNo}\nCustomer: ${finalCustomerName}\nEvent: ${finalEventName}\nTotal: ${finalNetPayable} BDT\nAdvance Paid: ${finalAdvancePaid} BDT\nDue: ${finalDueAmount} BDT\nRittika Event Management`,
+      signatureUrl: canvasSignature || undefined
+    };
+
+    onAddEventInvoice(payload);
+
+    // Update linked quotation to Converted if exists
+    if (finalSelectedQuotationId && linkedQuotation && onUpdateQuotation) {
+      onUpdateQuotation(finalSelectedQuotationId, {
+        ...linkedQuotation,
+        status: 'Converted'
+      });
+    }
+
+    setIsCreatingFinalInvoice(false);
+
+    const generatedWithId = {
+      ...payload,
+      id: `EVT-INV-${Date.now()}`
+    };
+
+    setPreviewInvoice({
+      id: generatedWithId.id,
+      type: 'event',
+      data: generatedWithId
+    });
+
+    alert('🎉 ইভেন্ট সম্পন্ন ফাইনাল ইনভয়েস সফলভাবে জেনারেট ও সংরক্ষণ করা হয়েছে!');
   };
 
   // Folder Files filtering for Document Center (Module 26) & Media Storage (Module 30)
@@ -745,12 +1283,39 @@ export default function InvoiceHub({
   const handleShareSubmit = () => {
     if (!sharingInvoice) return;
     if (shareMethod === 'whatsapp') {
-      const isQuo = sharingInvoice.type === 'quotations';
-      const text = encodeURIComponent(
-        isQuo
-          ? `প্রিয় ${sharingInvoice.name}, রিত্তিকা ইভেন্ট ডেকোরেশন থেকে আপনার ইভেন্টের বাজেট কোটেশন বিল তৈরি হয়েছে। কোটেশন নং: ${sharingInvoice.id}। ধন্যবাদ!`
-          : `প্রিয় ${sharingInvoice.name}, রিত্তিকা ইভেন্ট ডেকোরেশন থেকে আপনার ইনভয়েসটি জেনারেট হয়েছে। ইনভয়েস নং: ${sharingInvoice.id}. ধন্যবাদ!`
-      );
+      let text = '';
+      if (sharingInvoice.type === 'quotations') {
+        text = encodeURIComponent(
+          `📋 *রিত্তিকা ইভেন্ট ম্যানেজমেন্ট — বাজেট কোটেশন*\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `👤 *গ্রাহক:* ${sharingInvoice.name}\n` +
+          `🧾 *কোটেশন নং:* ${sharingInvoice.id}\n` +
+          `📞 *যোগাযোগ:* +880 1721-779396\n` +
+          `🏢 *ঠিকানা:* রথপাড়া, ভেড়ামারা, কুষ্টিয়া\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `আপনার ইভেন্টের বিস্তারিত বাজেট কোটেশন ও এস্টিমেট প্রস্তুত করা হয়েছে। রিত্তিকা ইভেন্ট ম্যানেজমেন্টের সাথে যোগাযোগ করার জন্য ধন্যবাদ!`
+        );
+      } else if (sharingInvoice.type === 'event') {
+        text = encodeURIComponent(
+          `🎉 *রিত্তিকা ইভেন্ট ম্যানেজমেন্ট — ইভেন্ট ফাইনাল ইনভয়েস বিল*\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `👤 *গ্রাহক:* ${sharingInvoice.name}\n` +
+          `🧾 *ইনভয়েস নং:* ${sharingInvoice.id}\n` +
+          `📞 *যোগাযোগ:* +880 1721-779396\n` +
+          `🏢 *ঠিকানা:* রথপাড়া, ভেড়ামারা, কুষ্টিয়া\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `আপনার ইভেন্ট সম্পন্ন বিল এবং পেমেন্ট রসিদ প্রস্তুত করা হয়েছে। রিত্তিকা ইভেন্ট ম্যানেজমেন্টের সেবা গ্রহণ করার জন্য আপনাকে আন্তরিক ধন্যবাদ!`
+        );
+      } else {
+        text = encodeURIComponent(
+          `🧾 *রিত্তিকা ইভেন্ট ম্যানেজমেন্ট — অফিসিয়াল ইনভয়েস*\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `👤 *গ্রাহক:* ${sharingInvoice.name}\n` +
+          `🧾 *ইনভয়েস নং:* ${sharingInvoice.id}\n` +
+          `📞 *যোগাযোগ:* +880 1721-779396\n` +
+          `ধন্যবাদ!`
+        );
+      }
       const url = `https://wa.me/${shareTarget}?text=${text}`;
       window.open(url, '_blank');
     } else {
@@ -826,6 +1391,60 @@ export default function InvoiceHub({
         })}
       </div>
 
+      {/* 🌟 SHARED DATALISTS FOR FLEXIBLE INPUT ACROSS ALL FORMS */}
+      <datalist id="dl-quotation-categories">
+        {CATEGORY_PRESETS.map(cat => (
+          <option key={cat} value={cat} />
+        ))}
+      </datalist>
+
+      <datalist id="dl-units">
+        <option value="পিস" />
+        <option value="টি" />
+        <option value="সেট" />
+        <option value="ফিট" />
+        <option value="গজ" />
+        <option value="স্কয়ার ফিট" />
+        <option value="কেজি" />
+        <option value="লিটার" />
+        <option value="দিন" />
+        <option value="ঘণ্টা" />
+        <option value="বান্ডিল" />
+        <option value="রোল" />
+        <option value="প্যাকেট" />
+        <option value="বস্তা" />
+        <option value="বক্স" />
+        <option value="জোড়া" />
+      </datalist>
+
+      <datalist id="dl-stock-items">
+        {stockItems.map(st => (
+          <option key={st.code} value={st.name}>
+            [{st.category}] ৳{st.rentalPrice || st.sellingPrice || 0}
+          </option>
+        ))}
+      </datalist>
+
+      <datalist id="dl-customers">
+        {customers.map(c => (
+          <option key={c.id} value={c.name}>
+            {c.mobile} - {c.address || ''}
+          </option>
+        ))}
+      </datalist>
+
+      <datalist id="dl-payment-methods">
+        <option value="বিকাশ (bKash)" />
+        <option value="নগদ (Cash)" />
+        <option value="নগদ অনলাইন (Nagad)" />
+        <option value="রকেট (Rocket)" />
+        <option value="উপায় (Upay)" />
+        <option value="ব্যাংক ট্রান্সফার (Bank)" />
+        <option value="চেক (Cheque)" />
+        <option value="বকেয়া (Due - Pending)" />
+        <option value="কার্ড (Card / POS)" />
+      </datalist>
+
       {/* 🌟 CONTENT AREA */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8" id="invoice-hub-content-area">
         
@@ -856,6 +1475,15 @@ export default function InvoiceHub({
                 >
                   <PlusCircle size={15} />
                   + নতুন কোটেশন তৈরি করুন
+                </button>
+
+                <button
+                  onClick={() => handleOpenFinalInvoice()}
+                  className="w-full neo-btn py-2.5 text-xs flex items-center justify-center gap-2 bg-teal-400 text-black font-black uppercase tracking-wider shadow-[3px_3px_0px_0px_#000000] hover:bg-teal-300"
+                  title="ইভেন্ট শেষ হওয়ার পর অতিরিক্ত কাজ ও অগ্রিম সমন্বয়ে ফাইনাল বিল করুন"
+                >
+                  <Sparkles size={15} />
+                  ⚡ ফাইনাল ইভেন্ট বিল জেনারেট
                 </button>
               </div>
 
@@ -1004,175 +1632,706 @@ export default function InvoiceHub({
           {/* Active Tab: Sales Invoices */}
           {activeTab === 'sales-invoices' && (
             <div className="neo-card p-5 space-y-4">
-              <h3 className="text-sm font-black uppercase tracking-wider text-black">ইনভয়েস অটো-জেনারেটর</h3>
-              <p className="text-xs font-bold text-slate-700">সরাসরি বিক্রয় তালিকা থেকে সিলেক্ট করে অটোমেটিক কাস্টমাইজড ইনভয়েস তৈরি করুন।</p>
-              
-              <div className="space-y-3">
-                <div>
-                  <label className="text-[11px] font-black uppercase block mb-1">বিক্রয় রেকর্ড নির্বাচন করুন</label>
-                  <select
-                    value={selectedSaleId}
-                    onChange={(e) => setSelectedSaleId(e.target.value)}
-                    className="w-full bg-white border-2 border-black p-2 text-xs font-bold"
-                  >
-                    <option value="">নির্বাচন করুন...</option>
-                    {sales.map(s => {
-                      const c = customers.find(cust => cust.id === s.customerId);
-                      const item = stockItems.find(st => st.code === s.itemCode);
-                      return (
-                        <option key={s.id} value={s.id}>
-                          {s.date} - {c ? c.name : 'Unknown'} ({item ? item.name : s.itemCode} x {s.qty})
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
+              <div className="flex items-center justify-between border-b-2 border-black pb-2">
+                <h3 className="text-sm font-black uppercase tracking-wider text-black">বিক্রয় ইনভয়েস জেনারেটর</h3>
+                <span className="text-[10px] font-black bg-emerald-100 text-emerald-900 border border-black px-1.5 py-0.5 rounded">Sales</span>
+              </div>
 
-                <div>
-                  <label className="text-[11px] font-black uppercase block mb-1">ডিসকাউন্ট দিন (টাকা)</label>
-                  <input
-                    type="number"
-                    value={salesDiscount}
-                    onChange={(e) => setSalesDiscount(Number(e.target.value))}
-                    className="w-full bg-white border-2 border-black p-2 text-xs font-bold font-mono"
-                    placeholder="0"
-                  />
-                </div>
-
+              {/* Mode Toggle */}
+              <div className="grid grid-cols-2 gap-1 border-2 border-black p-1 bg-slate-100">
                 <button
-                  onClick={handleAutoGenerateSalesInvoice}
-                  disabled={!selectedSaleId}
-                  className="w-full neo-btn py-2 text-xs font-black uppercase bg-emerald-400 border-2 border-black shadow-[2px_2px_0px_0px_#000000] disabled:opacity-50"
+                  type="button"
+                  onClick={() => setSalesInvoiceMode('existing')}
+                  className={`py-1.5 text-[11px] font-black uppercase transition ${
+                    salesInvoiceMode === 'existing' ? 'bg-emerald-400 text-black border border-black shadow-[1px_1px_0px_0px_#000]' : 'bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
                 >
-                  ইনভয়েস জেনারেট করুন
+                  তালিকা থেকে নির্বাচন
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSalesInvoiceMode('custom')}
+                  className={`py-1.5 text-[11px] font-black uppercase transition ${
+                    salesInvoiceMode === 'custom' ? 'bg-emerald-400 text-black border border-black shadow-[1px_1px_0px_0px_#000]' : 'bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  + কাস্টম এন্ট্রি
                 </button>
               </div>
+
+              {salesInvoiceMode === 'existing' ? (
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-slate-700">বিক্রয় তালিকা থেকে সিলেক্ট করে অটোমেটিক কাস্টমাইজড ইনভয়েস তৈরি করুন।</p>
+                  <div>
+                    <label className="text-[11px] font-black uppercase block mb-1">বিক্রয় রেকর্ড নির্বাচন করুন</label>
+                    <select
+                      value={selectedSaleId}
+                      onChange={(e) => setSelectedSaleId(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-2 text-xs font-bold"
+                    >
+                      <option value="">নির্বাচন করুন...</option>
+                      {sales.map(s => {
+                        const c = customers.find(cust => cust.id === s.customerId);
+                        const item = stockItems.find(st => st.code === s.itemCode);
+                        return (
+                          <option key={s.id} value={s.id}>
+                            {s.date} - {c ? c.name : 'Unknown'} ({item ? item.name : s.itemCode} x {s.qty})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-black uppercase block mb-1">ডিসকাউন্ট দিন (টাকা)</label>
+                    <input
+                      type="number"
+                      value={salesDiscount}
+                      onChange={(e) => setSalesDiscount(Number(e.target.value))}
+                      className="w-full bg-white border-2 border-black p-2 text-xs font-bold font-mono"
+                      placeholder="0"
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleAutoGenerateSalesInvoice}
+                    disabled={!selectedSaleId}
+                    className="w-full neo-btn py-2 text-xs font-black uppercase bg-emerald-400 border-2 border-black shadow-[2px_2px_0px_0px_#000000] disabled:opacity-50"
+                  >
+                    ইনভয়েস জেনারেট করুন
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleCreateCustomSalesInvoice} className="space-y-2.5 text-xs font-bold">
+                  <p className="text-xs font-bold text-slate-700">ড্রপডাউন ছাড়াও সম্পূর্ণ কাস্টম গ্রাহক ও বিক্রয় তথ্য দিয়ে সরাসরি ইনভয়েস তৈরি করুন:</p>
+                  
+                  <div>
+                    <label className="text-[10px] font-black uppercase block mb-0.5">তারিখ (Date)</label>
+                    <input
+                      type="date"
+                      value={customSaleDate}
+                      onChange={(e) => setCustomSaleDate(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-1.5"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase block mb-0.5">গ্রাহকের নাম (Customer Name)</label>
+                    <input
+                      type="text"
+                      list="common-customer-names-list"
+                      required
+                      placeholder="যেমন: রবিন কুমার / কাস্টম নাম"
+                      value={customSaleCustomerName}
+                      onChange={(e) => setCustomSaleCustomerName(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-1.5"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">মোবাইল নম্বর</label>
+                      <input
+                        type="text"
+                        placeholder="০১৭xxxxxxxx"
+                        value={customSaleCustomerMobile}
+                        onChange={(e) => setCustomSaleCustomerMobile(e.target.value)}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">ঠিকানা</label>
+                      <input
+                        type="text"
+                        placeholder="ভেড়ামারা, কুষ্টিয়া"
+                        value={customSaleCustomerAddress}
+                        onChange={(e) => setCustomSaleCustomerAddress(e.target.value)}
+                        className="w-full bg-white border-2 border-black p-1.5"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase block mb-0.5">বিক্রিত সামগ্রী / আইটেমের নাম</label>
+                    <input
+                      type="text"
+                      list="common-stock-items-list"
+                      required
+                      placeholder="যেমন: এলইডি পার লাইট / ক্রিস্টাল সেট"
+                      value={customSaleItemName}
+                      onChange={(e) => setCustomSaleItemName(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-1.5"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">পরিমাণ</label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={customSaleQty}
+                        onChange={(e) => setCustomSaleQty(Number(e.target.value))}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">একক</label>
+                      <input
+                        type="text"
+                        list="common-units-list"
+                        value={customSaleUnit}
+                        onChange={(e) => setCustomSaleUnit(e.target.value)}
+                        className="w-full bg-white border-2 border-black p-1.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">দর (Rate)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={customSaleRate}
+                        onChange={(e) => setCustomSaleRate(Number(e.target.value))}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase block mb-0.5">ডিসকাউন্ট / ছাড় (টাকা)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={customSaleDiscount}
+                      onChange={(e) => setCustomSaleDiscount(Number(e.target.value))}
+                      className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                    />
+                  </div>
+
+                  <div className="p-2 bg-emerald-50 border border-emerald-300 flex justify-between items-center text-xs font-black">
+                    <span>মোট বিল:</span>
+                    <span className="font-mono text-emerald-800 text-sm">
+                      {formatCurrency(Math.max(0, (customSaleQty * customSaleRate) - customSaleDiscount))}
+                    </span>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full neo-btn py-2 text-xs font-black uppercase bg-emerald-400 border-2 border-black shadow-[2px_2px_0px_0px_#000000] hover:bg-emerald-300"
+                  >
+                    + কাস্টম বিক্রয় ইনভয়েস সংরক্ষণ
+                  </button>
+                </form>
+              )}
             </div>
           )}
 
           {/* Active Tab: Rental Invoices */}
           {activeTab === 'rental-invoices' && (
             <div className="neo-card p-5 space-y-4">
-              <h3 className="text-sm font-black uppercase tracking-wider text-black">ভাড়া ইনভয়েস অটো-জেনারেটর</h3>
-              <p className="text-xs font-bold text-slate-700">ভাড়ার রেকর্ড থেকে সিকিউরিটি ডিপোজিট, লেবার এবং ট্রান্সপোর্ট চার্জসহ প্রফেশনাল ইনভয়েস জেনারেট করুন।</p>
+              <div className="flex items-center justify-between border-b-2 border-black pb-2">
+                <h3 className="text-sm font-black uppercase tracking-wider text-black">ভাড়া ইনভয়েস জেনারেটর</h3>
+                <span className="text-[10px] font-black bg-amber-100 text-amber-900 border border-black px-1.5 py-0.5 rounded">Rental</span>
+              </div>
 
-              <div className="space-y-3">
-                <div>
-                  <label className="text-[11px] font-black uppercase block mb-1">ভাড়া রেকর্ড নির্বাচন করুন</label>
-                  <select
-                    value={selectedRentalId}
-                    onChange={(e) => setSelectedRentalId(e.target.value)}
-                    className="w-full bg-white border-2 border-black p-2 text-xs font-bold"
-                  >
-                    <option value="">নির্বাচন করুন...</option>
-                    {rentals.map(r => {
-                      const c = customers.find(cust => cust.id === r.customerId);
-                      const item = stockItems.find(st => st.code === r.itemCode);
-                      return (
-                        <option key={r.id} value={r.id}>
-                          {r.date} - {c ? c.name : 'Unknown'} ({item ? item.name : r.itemCode} x {r.qty})
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-black uppercase block mb-1">সিকিউরিটি ডিপোজিট (টাকা)</label>
-                  <input
-                    type="number"
-                    value={securityDeposit}
-                    onChange={(e) => setSecurityDeposit(Number(e.target.value))}
-                    className="w-full bg-white border-2 border-black p-2 text-xs font-bold font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-black uppercase block mb-1">গাড়ি ভাড়া / ট্রান্সপোর্ট খরচ</label>
-                  <input
-                    type="number"
-                    value={transportCharge}
-                    onChange={(e) => setTransportCharge(Number(e.target.value))}
-                    className="w-full bg-white border-2 border-black p-2 text-xs font-bold font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-black uppercase block mb-1">লেবার / শ্রমিক খরচ</label>
-                  <input
-                    type="number"
-                    value={labourCharge}
-                    onChange={(e) => setLabourCharge(Number(e.target.value))}
-                    className="w-full bg-white border-2 border-black p-2 text-xs font-bold font-mono"
-                  />
-                </div>
-
+              {/* Mode Toggle */}
+              <div className="grid grid-cols-2 gap-1 border-2 border-black p-1 bg-slate-100">
                 <button
-                  onClick={handleAutoGenerateRentalInvoice}
-                  disabled={!selectedRentalId}
-                  className="w-full neo-btn py-2 text-xs font-black uppercase bg-amber-400 border-2 border-black shadow-[2px_2px_0px_0px_#000000] disabled:opacity-50"
+                  type="button"
+                  onClick={() => setRentalInvoiceMode('existing')}
+                  className={`py-1.5 text-[11px] font-black uppercase transition ${
+                    rentalInvoiceMode === 'existing' ? 'bg-amber-400 text-black border border-black shadow-[1px_1px_0px_0px_#000]' : 'bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
                 >
-                  ভাড়া ইনভয়েস জেনারেট করুন
+                  তালিকা থেকে নির্বাচন
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRentalInvoiceMode('custom')}
+                  className={`py-1.5 text-[11px] font-black uppercase transition ${
+                    rentalInvoiceMode === 'custom' ? 'bg-amber-400 text-black border border-black shadow-[1px_1px_0px_0px_#000]' : 'bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  + কাস্টম এন্ট্রি
                 </button>
               </div>
+
+              {rentalInvoiceMode === 'existing' ? (
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-slate-700">ভাড়ার রেকর্ড থেকে সিকিউরিটি ডিপোজিট, লেবার এবং ট্রান্সপোর্ট চার্জসহ প্রফেশনাল ইনভয়েস জেনারেট করুন।</p>
+
+                  <div>
+                    <label className="text-[11px] font-black uppercase block mb-1">ভাড়া রেকর্ড নির্বাচন করুন</label>
+                    <select
+                      value={selectedRentalId}
+                      onChange={(e) => setSelectedRentalId(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-2 text-xs font-bold"
+                    >
+                      <option value="">নির্বাচন করুন...</option>
+                      {rentals.map(r => {
+                        const c = customers.find(cust => cust.id === r.customerId);
+                        const item = stockItems.find(st => st.code === r.itemCode);
+                        return (
+                          <option key={r.id} value={r.id}>
+                            {r.date} - {c ? c.name : 'Unknown'} ({item ? item.name : r.itemCode} x {r.qty})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-black uppercase block mb-1">সিকিউরিটি ডিপোজিট (টাকা)</label>
+                    <input
+                      type="number"
+                      value={securityDeposit}
+                      onChange={(e) => setSecurityDeposit(Number(e.target.value))}
+                      className="w-full bg-white border-2 border-black p-2 text-xs font-bold font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-black uppercase block mb-1">গাড়ি ভাড়া / ট্রান্সপোর্ট খরচ</label>
+                    <input
+                      type="number"
+                      value={transportCharge}
+                      onChange={(e) => setTransportCharge(Number(e.target.value))}
+                      className="w-full bg-white border-2 border-black p-2 text-xs font-bold font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-black uppercase block mb-1">লেবার / শ্রমিক খরচ</label>
+                    <input
+                      type="number"
+                      value={labourCharge}
+                      onChange={(e) => setLabourCharge(Number(e.target.value))}
+                      className="w-full bg-white border-2 border-black p-2 text-xs font-bold font-mono"
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleAutoGenerateRentalInvoice}
+                    disabled={!selectedRentalId}
+                    className="w-full neo-btn py-2 text-xs font-black uppercase bg-amber-400 border-2 border-black shadow-[2px_2px_0px_0px_#000000] disabled:opacity-50"
+                  >
+                    ভাড়া ইনভয়েস জেনারেট করুন
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleCreateCustomRentalInvoice} className="space-y-2.5 text-xs font-bold">
+                  <p className="text-xs font-bold text-slate-700">ড্রপডাউন ছাড়াই যেকোনো গ্রাহক ও ভাড়ার মালামালের জন্য সরাসরি চালান তৈরি করুন:</p>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">চালানের তারিখ</label>
+                      <input
+                        type="date"
+                        value={customRentalDate}
+                        onChange={(e) => setCustomRentalDate(e.target.value)}
+                        className="w-full bg-white border-2 border-black p-1.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">ইভেন্ট তারিখ</label>
+                      <input
+                        type="date"
+                        value={customRentalEventDate}
+                        onChange={(e) => setCustomRentalEventDate(e.target.value)}
+                        className="w-full bg-white border-2 border-black p-1.5"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase block mb-0.5">গ্রাহকের নাম (Customer)</label>
+                    <input
+                      type="text"
+                      list="common-customer-names-list"
+                      required
+                      placeholder="যেমন: রবিন কুমার / কাস্টম নাম"
+                      value={customRentalCustomerName}
+                      onChange={(e) => setCustomRentalCustomerName(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-1.5"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">মোবাইল</label>
+                      <input
+                        type="text"
+                        placeholder="০১৭xxxxxxxx"
+                        value={customRentalCustomerMobile}
+                        onChange={(e) => setCustomRentalCustomerMobile(e.target.value)}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">ইভেন্টের নাম / উপলক্ষ</label>
+                      <input
+                        type="text"
+                        list="common-event-presets-list"
+                        placeholder="যেমন: বিবাহ ডেকোরেশন"
+                        value={customRentalEventName}
+                        onChange={(e) => setCustomRentalEventName(e.target.value)}
+                        className="w-full bg-white border-2 border-black p-1.5"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase block mb-0.5">ভাড়ার সামগ্রী / আইটেমের বিবরণ</label>
+                    <input
+                      type="text"
+                      list="common-stock-items-list"
+                      required
+                      placeholder="যেমন: ভিআইপি সোফা সেট / সাউন্ড বক্স"
+                      value={customRentalItemName}
+                      onChange={(e) => setCustomRentalItemName(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-1.5"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">পরিমাণ</label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={customRentalQty}
+                        onChange={(e) => setCustomRentalQty(Number(e.target.value))}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">একক</label>
+                      <input
+                        type="text"
+                        list="common-units-list"
+                        value={customRentalUnit}
+                        onChange={(e) => setCustomRentalUnit(e.target.value)}
+                        className="w-full bg-white border-2 border-black p-1.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">ভাড়া রেট (টাকা)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={customRentalRate}
+                        onChange={(e) => setCustomRentalRate(Number(e.target.value))}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">ডিপোজিট</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={customRentalDeposit}
+                        onChange={(e) => setCustomRentalDeposit(Number(e.target.value))}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">পরিবহন ভাড়া</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={customRentalTransport}
+                        onChange={(e) => setCustomRentalTransport(Number(e.target.value))}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">লেবার চার্জ</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={customRentalLabour}
+                        onChange={(e) => setCustomRentalLabour(Number(e.target.value))}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-2 bg-amber-50 border border-amber-300 flex justify-between items-center text-xs font-black">
+                    <span>মোট ভাড়া বিল:</span>
+                    <span className="font-mono text-amber-900 text-sm">
+                      {formatCurrency((customRentalQty * customRentalRate) + customRentalTransport + customRentalLabour)}
+                    </span>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full neo-btn py-2 text-xs font-black uppercase bg-amber-400 border-2 border-black shadow-[2px_2px_0px_0px_#000000] hover:bg-amber-300"
+                  >
+                    + কাস্টম ভাড়া ইনভয়েস সংরক্ষণ
+                  </button>
+                </form>
+              )}
             </div>
           )}
 
           {/* Active Tab: Event Invoices */}
           {activeTab === 'event-invoices' && (
             <div className="neo-card p-5 space-y-4">
-              <h3 className="text-sm font-black uppercase tracking-wider text-black">ইভেন্ট বিলিং ও চালান</h3>
-              <p className="text-xs font-bold text-slate-700">ইভেন্ট সম্পন্ন হওয়ার পর ডেকোরেশন প্যাকেজ এবং অতিরিক্ত মালামালসহ সম্পূর্ণ বিল জেনারেট করুন।</p>
+              <div className="flex items-center justify-between border-b-2 border-black pb-2">
+                <h3 className="text-sm font-black uppercase tracking-wider text-black">ইভেন্ট বিলিং ও চালান</h3>
+                <span className="text-[10px] font-black bg-teal-100 text-teal-900 border border-black px-1.5 py-0.5 rounded">Event</span>
+              </div>
 
-              <div className="space-y-3">
-                <div>
-                  <label className="text-[11px] font-black uppercase block mb-1">সম্পন্ন ইভেন্ট নির্বাচন করুন</label>
-                  <select
-                    value={selectedEventId}
-                    onChange={(e) => setSelectedEventId(e.target.value)}
-                    className="w-full bg-white border-2 border-black p-2 text-xs font-bold"
-                  >
-                    <option value="">নির্বাচন করুন...</option>
-                    {events.map(ev => {
-                      const c = customers.find(cust => cust.id === ev.customerId);
-                      return (
-                        <option key={ev.id} value={ev.id}>
-                          {ev.name} ({c ? c.name : 'Unknown'}) - {ev.date}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-black uppercase block mb-1">অতিরিক্ত খরচ (যদি থাকে)</label>
-                  <input
-                    type="number"
-                    value={eventExtraCharge}
-                    onChange={(e) => setEventExtraCharge(Number(e.target.value))}
-                    className="w-full bg-white border-2 border-black p-2 text-xs font-bold font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-black uppercase block mb-1">অতিরিক্ত খরচের বিবরণ</label>
-                  <textarea
-                    value={eventExtraDetails}
-                    onChange={(e) => setEventExtraDetails(e.target.value)}
-                    className="w-full bg-white border-2 border-black p-2 text-xs font-bold"
-                    rows={2}
-                    placeholder="যেমন: অতিরিক্ত আলোকসজ্জা"
-                  />
-                </div>
-
+              {/* Mode Toggle */}
+              <div className="grid grid-cols-2 gap-1 border-2 border-black p-1 bg-slate-100">
                 <button
-                  onClick={handleAutoGenerateEventInvoice}
-                  disabled={!selectedEventId}
-                  className="w-full neo-btn py-2 text-xs font-black uppercase bg-teal-400 border-2 border-black shadow-[2px_2px_0px_0px_#000000] disabled:opacity-50"
+                  type="button"
+                  onClick={() => setEventInvoiceMode('existing')}
+                  className={`py-1.5 text-[11px] font-black uppercase transition ${
+                    eventInvoiceMode === 'existing' ? 'bg-teal-400 text-black border border-black shadow-[1px_1px_0px_0px_#000]' : 'bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
                 >
-                  ইভেন্ট ইনভয়েস জেনারেট করুন
+                  তালিকা থেকে নির্বাচন
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEventInvoiceMode('custom')}
+                  className={`py-1.5 text-[11px] font-black uppercase transition ${
+                    eventInvoiceMode === 'custom' ? 'bg-teal-400 text-black border border-black shadow-[1px_1px_0px_0px_#000]' : 'bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  + কাস্টম এন্ট্রি
                 </button>
               </div>
+
+              {eventInvoiceMode === 'existing' ? (
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-slate-700">ইভেন্ট সম্পন্ন হওয়ার পর ডেকোরেশন প্যাকেজ এবং অতিরিক্ত মালামালসহ সম্পূর্ণ বিল জেনারেট করুন।</p>
+
+                  <div>
+                    <label className="text-[11px] font-black uppercase block mb-1">সম্পন্ন ইভেন্ট নির্বাচন করুন</label>
+                    <select
+                      value={selectedEventId}
+                      onChange={(e) => setSelectedEventId(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-2 text-xs font-bold"
+                    >
+                      <option value="">নির্বাচন করুন...</option>
+                      {events.map(ev => {
+                        const c = customers.find(cust => cust.id === ev.customerId);
+                        return (
+                          <option key={ev.id} value={ev.id}>
+                            {ev.name} ({c ? c.name : 'Unknown'}) - {ev.date}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-black uppercase block mb-1">অতিরিক্ত খরচ (যদি থাকে)</label>
+                    <input
+                      type="number"
+                      value={eventExtraCharge}
+                      onChange={(e) => setEventExtraCharge(Number(e.target.value))}
+                      className="w-full bg-white border-2 border-black p-2 text-xs font-bold font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-black uppercase block mb-1">অতিরিক্ত খরচের বিবরণ</label>
+                    <textarea
+                      value={eventExtraDetails}
+                      onChange={(e) => setEventExtraDetails(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-2 text-xs font-bold"
+                      rows={2}
+                      placeholder="যেমন: অতিরিক্ত আলোকসজ্জা"
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleAutoGenerateEventInvoice}
+                    disabled={!selectedEventId}
+                    className="w-full neo-btn py-2 text-xs font-black uppercase bg-teal-400 border-2 border-black shadow-[2px_2px_0px_0px_#000000] disabled:opacity-50"
+                  >
+                    ইভেন্ট ইনভয়েস জেনারেট করুন
+                  </button>
+
+                  <div className="pt-2 border-t border-slate-300">
+                    <button
+                      onClick={() => handleOpenFinalInvoice()}
+                      className="w-full neo-btn py-2.5 text-xs font-black uppercase bg-yellow-400 text-black border-2 border-black shadow-[2px_2px_0px_0px_#000000] flex items-center justify-center gap-1.5 hover:bg-yellow-300"
+                      title="সম্পন্ন ইভেন্টের অগ্রিম, অতিরিক্ত কাজ ও ক্ষতিপূরণ সমন্বয় করে ফাইনাল বিল বানান"
+                    >
+                      <Sparkles size={14} />
+                      ⚡ সম্পূর্ণ ফাইনাল বিল বিল্ডার
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleCreateCustomEventInvoice} className="space-y-2.5 text-xs font-bold">
+                  <p className="text-xs font-bold text-slate-700">ড্রপডাউন ছাড়াই যেকোনো নতুন ইভেন্ট বা প্যাকেজের জন্য সরাসরি বিল তৈরি করুন:</p>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">বিলিং তারিখ</label>
+                      <input
+                        type="date"
+                        value={customEventDate}
+                        onChange={(e) => setCustomEventDate(e.target.value)}
+                        className="w-full bg-white border-2 border-black p-1.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">ইভেন্ট সম্পন্ন তারিখ</label>
+                      <input
+                        type="date"
+                        value={customEventEventDate}
+                        onChange={(e) => setCustomEventEventDate(e.target.value)}
+                        className="w-full bg-white border-2 border-black p-1.5"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase block mb-0.5">ইভেন্টের নাম (Event Name)</label>
+                    <input
+                      type="text"
+                      list="common-event-presets-list"
+                      required
+                      placeholder="যেমন: গ্র্যান্ড ওয়েডিং রিসেপশন ২০২৬"
+                      value={customEventName}
+                      onChange={(e) => setCustomEventName(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-1.5"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">ক্লায়েন্টের নাম (Client)</label>
+                      <input
+                        type="text"
+                        list="common-customer-names-list"
+                        required
+                        placeholder="যেমন: মো: কামরুল হাসান"
+                        value={customEventCustomerName}
+                        onChange={(e) => setCustomEventCustomerName(e.target.value)}
+                        className="w-full bg-white border-2 border-black p-1.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">মোবাইল নম্বর</label>
+                      <input
+                        type="text"
+                        placeholder="০১৭xxxxxxxx"
+                        value={customEventCustomerMobile}
+                        onChange={(e) => setCustomEventCustomerMobile(e.target.value)}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase block mb-0.5">ভেন্যু / লোকেশন (Venue)</label>
+                    <input
+                      type="text"
+                      list="common-venue-presets-list"
+                      placeholder="যেমন: ভেড়ামারা কমিউনিটি সেন্টার"
+                      value={customEventVenue}
+                      onChange={(e) => setCustomEventVenue(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-1.5"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase block mb-0.5">ডেকোরেশন প্যাকেজ / সেবার বিবরণ</label>
+                    <input
+                      type="text"
+                      placeholder="যেমন: প্রিমিয়াম স্টেজ, এন্ট্রি গেট, ফ্লাওয়ার ও লাইটিং"
+                      value={customEventPackage}
+                      onChange={(e) => setCustomEventPackage(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-1.5"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">মূল বাজেট</label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={customEventBudget}
+                        onChange={(e) => setCustomEventBudget(Number(e.target.value))}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">পরিবহন খরচ</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={customEventTransport}
+                        onChange={(e) => setCustomEventTransport(Number(e.target.value))}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">লেবার খরচ</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={customEventLabour}
+                        onChange={(e) => setCustomEventLabour(Number(e.target.value))}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">অতিরিক্ত চার্জ (Extra)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={customEventExtraCharge}
+                        onChange={(e) => setCustomEventExtraCharge(Number(e.target.value))}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase block mb-0.5">অতিরিক্ত বিবরণ</label>
+                      <input
+                        type="text"
+                        placeholder="যেমন: এক্সট্রা ফ্লাওয়ার"
+                        value={customEventExtraDetails}
+                        onChange={(e) => setCustomEventExtraDetails(e.target.value)}
+                        className="w-full bg-white border-2 border-black p-1.5"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-2 bg-teal-50 border border-teal-300 flex justify-between items-center text-xs font-black">
+                    <span>মোট ইভেন্ট বিল:</span>
+                    <span className="font-mono text-teal-900 text-sm">
+                      {formatCurrency(customEventBudget + customEventTransport + customEventLabour + customEventExtraCharge)}
+                    </span>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full neo-btn py-2 text-xs font-black uppercase bg-teal-400 border-2 border-black shadow-[2px_2px_0px_0px_#000000] hover:bg-teal-300"
+                  >
+                    + কাস্টম ইভেন্ট ইনভয়েস সংরক্ষণ
+                  </button>
+                </form>
+              )}
             </div>
           )}
 
@@ -1200,6 +2359,16 @@ export default function InvoiceHub({
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
+                  {previewInvoice.type === 'quotations' && (
+                    <button
+                      onClick={() => handleOpenFinalInvoice(previewInvoice.data)}
+                      className="neo-btn px-3 py-1.5 text-xs bg-amber-400 flex items-center gap-1.5 font-black uppercase shadow-[1px_1px_0px_0px_#000000] hover:bg-amber-300"
+                      title="ইভেন্ট সম্পন্ন করার পর ফাইনাল ইনভয়েস বিল জেনারেট করুন"
+                    >
+                      <Sparkles size={13} />
+                      ⚡ ফাইনাল বিল জেনারেট
+                    </button>
+                  )}
                   {previewInvoice.type === 'quotations' && previewInvoice.data.status !== 'Converted' && (
                     <button
                       onClick={() => {
@@ -1238,120 +2407,143 @@ export default function InvoiceHub({
 
               {/* 🌟 THE ACTUAL PRINTABLE INVOICE / QUOTATION TEMPLATE */}
               <div 
-                className="bg-white border-4 border-black p-8 relative overflow-hidden shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] print:border-0 print:shadow-none" 
+                className="bg-white border-2 border-slate-900 p-8 sm:p-10 relative overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.12)] print:border-0 print:shadow-none print:p-4" 
                 id="printable-invoice-canvas"
               >
                 
                 {/* Elegantly Crafted Watermark */}
                 <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none select-none z-0">
-                  <span className="text-7xl font-black uppercase tracking-widest text-black rotate-[-35deg] font-sans">
-                    RITTIKA DECORATION
+                  <span className="text-7xl font-black uppercase tracking-widest text-slate-900 rotate-[-30deg] font-sans">
+                    RITTIKA EVENT MANAGEMENT
                   </span>
                 </div>
 
                 <div className="relative z-10 space-y-6">
                   
-                  {/* Company Logo & Invoice Meta Headers */}
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b-4 border-black pb-4 gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-yellow-400 border-3 border-black flex items-center justify-center text-black font-black text-xl shadow-[2px_2px_0px_0px_#000000]">
-                        RD
+                  {/* Premium Company Header & Doc Meta */}
+                  <div className="border-b-2 border-slate-900 pb-5">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-amber-400 via-amber-500 to-yellow-500 border-2 border-slate-900 flex flex-col items-center justify-center text-slate-950 font-black shadow-[3px_3px_0px_0px_#0f172a] shrink-0">
+                          <span className="text-xl tracking-tighter leading-none">REM</span>
+                          <span className="text-[7px] tracking-widest uppercase mt-0.5">PREMIUM</span>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h2 className="text-2xl font-black uppercase tracking-tight text-slate-900 leading-none">Rittika Event Management</h2>
+                            <span className="bg-slate-900 text-amber-400 text-[9px] font-black px-2 py-0.5 rounded tracking-wider uppercase">Official</span>
+                          </div>
+                          <p className="text-xs text-slate-700 font-bold mt-1">প্রোপ্রাইটর: Robin Kumar | মোবাইল: +880 1721-779396</p>
+                          <p className="text-xs text-slate-600 font-semibold">অফিস: রথপাড়া, ভেড়ামারা, কুষ্টিয়া, বাংলাদেশ — 7040</p>
+                        </div>
                       </div>
-                      <div>
-                        <h2 className="text-xl font-black uppercase italic tracking-tight text-black leading-none">রিত্তিকা ইভেন্ট ডেকোরেশন</h2>
-                        <p className="text-[9px] text-black font-black uppercase tracking-widest mt-1">Rittika Event & Decoration ERP System</p>
-                        <p className="text-[10px] text-slate-700 font-bold">মোবাইল: ০১৮২৪-৫৯৭৫৬২ | ঠিকানা: ঢাকা, বাংলাদেশ</p>
+                      <div className="sm:text-right border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-200 w-full sm:w-auto">
+                        <span className="inline-block bg-slate-900 text-white text-xs font-black uppercase tracking-wider px-3 py-1 rounded shadow-sm">
+                          {previewInvoice.type === 'quotations' 
+                            ? 'বাজেট কোটেশন ও এস্টিমেট' 
+                            : previewInvoice.type === 'event' && previewInvoice.data.baseBudget !== undefined
+                            ? 'ইভেন্ট ফাইনাল ইনভয়েস বিল'
+                            : 'অফিসিয়াল ইনভয়েস বিল'}
+                        </span>
+                        <p className="text-sm font-black text-slate-900 mt-2 font-mono">
+                          {previewInvoice.type === 'quotations' 
+                            ? `নং: ${previewInvoice.data.quotationNo}` 
+                            : `নং: ${previewInvoice.data.invoiceNo || previewInvoice.data.purchaseNo}`}
+                        </p>
+                        <p className="text-xs font-bold text-slate-600 font-mono">ইস্যু তারিখ: {previewInvoice.data.date}</p>
+                        {previewInvoice.type === 'quotations' && previewInvoice.data.validUntil && (
+                          <p className="text-xs font-bold text-rose-700 font-mono">মেয়াদ: {previewInvoice.data.validUntil}</p>
+                        )}
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <h3 className="text-2xl font-black text-black uppercase tracking-tight italic">
-                        {previewInvoice.type === 'quotations' ? 'ইভেন্ট বাজেট কোটেশন / প্রাক্কলন বিল' : 'ইনভয়েস / চালান'}
-                      </h3>
-                      <p className="text-xs font-black text-slate-800 mt-1 font-mono">
-                        {previewInvoice.type === 'quotations' 
-                          ? `কোটেশন নং: ${previewInvoice.data.quotationNo}` 
-                          : `ইনভয়েস নং: ${previewInvoice.data.invoiceNo || previewInvoice.data.purchaseNo}`}
-                      </p>
-                      <p className="text-xs font-bold text-slate-700 font-mono">তারিখ: {previewInvoice.data.date}</p>
-                      {previewInvoice.type === 'quotations' && previewInvoice.data.validUntil && (
-                        <p className="text-[11px] font-bold text-rose-700 font-mono">মেয়াদ উত্তীর্ণ: {previewInvoice.data.validUntil}</p>
-                      )}
                     </div>
                   </div>
 
                   {/* Prominent Budget Type Banner for Quotations */}
                   {previewInvoice.type === 'quotations' && (
-                    <div className={`p-3 border-2 border-black text-center font-black uppercase text-xs tracking-wider flex items-center justify-center gap-2 shadow-[2px_2px_0px_0px_#000000] ${
+                    <div className={`p-3 rounded-lg border text-center font-black uppercase text-xs tracking-wider flex items-center justify-center gap-2 shadow-sm ${
                       previewInvoice.data.budgetType === 'Estimated' 
-                        ? 'bg-amber-200 text-amber-950' 
-                        : 'bg-emerald-200 text-emerald-950'
+                        ? 'bg-amber-50 border-amber-300 text-amber-950' 
+                        : 'bg-emerald-50 border-emerald-300 text-emerald-950'
                     }`}>
                       {previewInvoice.data.budgetType === 'Estimated' ? (
                         <>
                           <Clock size={16} className="text-amber-800" />
-                          <span>⚡ বাজেটের ধরণ: আনুমানিক বাজেট কোটেশন (ESTIMATED BUDGET QUOTATION - বাজার দর ও চাহিদানুযায়ী সমন্বয়যোগ্য)</span>
+                          <span>⚡ বাজেটের ধরণ: আনুমানিক বাজেট কোটেশন (ESTIMATED BUDGET - বাজার দর ও চাহিদানুযায়ী সমন্বয়যোগ্য)</span>
                         </>
                       ) : (
                         <>
                           <ShieldCheck size={16} className="text-emerald-800" />
-                          <span>🔒 বাজেটের ধরণ: ফিক্সড বাজেট চুক্তি কোটেশন (FIXED BUDGET CONTRACT - চূড়ান্ত অপরিবর্তনীয় বাজেট)</span>
+                          <span>🔒 বাজেটের ধরণ: ফিক্সড বাজেট চুক্তি কোটেশন (FIXED CONTRACT - চূড়ান্ত অপরিবর্তনীয় বাজেট)</span>
                         </>
                       )}
                     </div>
                   )}
 
-                  {/* Customer / Supplier Metadata */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-b-2 border-black pb-4">
-                    <div>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
-                        {previewInvoice.type === 'quotations' ? 'সম্মানিত গ্রাহক / ক্লায়েন্ট বিবরণ' : 'ইনভয়েস প্রাপক বিবরণ'}
+                  {/* Prominent Banner for Final Event Invoices */}
+                  {previewInvoice.type === 'event' && previewInvoice.data.baseBudget !== undefined && (
+                    <div className="p-3 rounded-lg border border-teal-300 text-center font-black uppercase text-xs tracking-wider flex items-center justify-center gap-2 shadow-sm bg-teal-50 text-teal-950">
+                      <Sparkles size={16} className="text-teal-800" />
+                      <span>🎉 ইভেন্ট সম্পন্ন চূড়ান্ত হিসাব ও ফাইনাল সেটেলমেন্ট বিল (Final Event Settlement & Completion Invoice)</span>
+                    </div>
+                  )}
+
+                  {/* Customer / Supplier Metadata in Elegant Dual Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-slate-50/80 rounded-xl p-4 border border-slate-200">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block mb-1.5 flex items-center gap-1">
+                        <User size={12} className="text-slate-600" />
+                        {previewInvoice.type === 'quotations' ? 'সম্মানিত গ্রাহক / ক্লায়েন্ট বিবরণ' : 'ইনভয়েস প্রাপক / ক্লায়েন্ট বিবরণ'}
                       </span>
-                      <p className="text-sm font-black text-black mt-1">
-                        নাম: {previewInvoice.data.customerName || previewInvoice.data.supplierName || 'সাধারণ ক্লায়েন্ট'}
+                      <p className="text-sm font-black text-slate-900">
+                        {previewInvoice.data.customerName || previewInvoice.data.supplierName || 'সাধারণ ক্লায়েন্ট'}
                       </p>
-                      <p className="text-xs font-bold text-slate-800">
-                        মোবাইল: {previewInvoice.data.customerMobile || previewInvoice.data.supplierMobile || 'প্রযোজ্য নয়'}
+                      <p className="text-xs font-semibold text-slate-700 mt-1">
+                        মোবাইল: <span className="font-mono">{previewInvoice.data.customerMobile || previewInvoice.data.supplierMobile || 'প্রযোজ্য নয়'}</span>
                       </p>
                       {previewInvoice.data.customerAddress && (
-                        <p className="text-xs font-bold text-slate-700">ঠিকানা: {previewInvoice.data.customerAddress}</p>
+                        <p className="text-xs text-slate-600 font-medium mt-0.5">ঠিকানা: {previewInvoice.data.customerAddress}</p>
                       )}
                     </div>
-                    <div className="md:text-right">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">ডকুমেন্ট ও ইভেন্ট ধরণ</span>
-                      <p className="text-sm font-black text-black uppercase mt-1">
+                    <div className="bg-slate-50/80 rounded-xl p-4 border border-slate-200 md:text-right">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block mb-1.5 md:justify-end flex items-center gap-1">
+                        <Tag size={12} className="text-slate-600" />
+                        ডকুমেন্ট ও ইভেন্ট ধরণ
+                      </span>
+                      <p className="text-sm font-black text-slate-900 uppercase">
                         {previewInvoice.type === 'quotations' ? `ইভেন্ট কোটেশন [${previewInvoice.data.budgetType === 'Estimated' ? 'আনুমানিক' : 'ফিক্সড'}]` :
                          previewInvoice.type === 'purchase' ? 'Supplier ক্রয় চালান' : 
                          previewInvoice.type === 'sales' ? 'সরাসরি বিক্রয় চালান' :
-                         previewInvoice.type === 'rental' ? 'সামগ্রী ভাড়া চালান' : 'ইভেন্ট ডেকোরেশন সম্পন্ন বিল'}
+                         previewInvoice.type === 'rental' ? 'সামগ্রী ভাড়া চালান' : 
+                         previewInvoice.data.baseBudget !== undefined ? 'ইভেন্ট সম্পন্ন ফাইনাল বিল' : 'ইভেন্ট সার্ভিস ও সম্পন্ন বিল'}
                       </p>
                       {previewInvoice.data.eventName && (
-                        <p className="text-xs font-bold text-slate-800">ইভেন্ট: {previewInvoice.data.eventName}</p>
+                        <p className="text-xs font-bold text-slate-800 mt-1">ইভেন্ট: {previewInvoice.data.eventName}</p>
                       )}
                       {previewInvoice.data.eventDate && (
-                        <p className="text-xs font-bold text-indigo-700 font-mono">ইভেন্ট তারিখ: {previewInvoice.data.eventDate}</p>
+                        <p className="text-xs font-bold text-indigo-700 font-mono mt-0.5">ইভেন্ট তারিখ: {previewInvoice.data.eventDate}</p>
                       )}
                       {previewInvoice.data.venue && (
-                        <p className="text-xs font-bold text-slate-700 font-mono">ভেন্যু / স্থান: {previewInvoice.data.venue}</p>
+                        <p className="text-xs font-medium text-slate-600 font-mono mt-0.5">ভেন্যু: {previewInvoice.data.venue}</p>
                       )}
                     </div>
                   </div>
 
                   {/* Core Items Table */}
-                  <div className="border-2 border-black overflow-hidden">
+                  <div className="border border-slate-900 rounded-xl overflow-hidden shadow-sm">
                     <table className="w-full text-left text-xs font-bold">
-                      <thead className="bg-slate-100 border-b-2 border-black text-[10px] uppercase font-black tracking-wider text-black">
+                      <thead className="bg-slate-900 text-white text-[10px] uppercase font-black tracking-wider">
                         <tr>
-                          <th className="p-3 border-r-2 border-black text-center w-12">#</th>
+                          <th className="p-3 border-r border-slate-700 text-center w-12">#</th>
                           {previewInvoice.type === 'quotations' && (
-                            <th className="p-3 border-r-2 border-black w-28">ক্যাটাগরি</th>
+                            <th className="p-3 border-r border-slate-700 w-28">ক্যাটাগরি</th>
                           )}
-                          <th className="p-3 border-r-2 border-black">বিবরণ / মালামাল (Item Details)</th>
-                          <th className="p-3 border-r-2 border-black text-center w-24">পরিমাণ (Qty)</th>
-                          <th className="p-3 border-r-2 border-black text-right w-28">বাজেট দর (Rate)</th>
-                          <th className="p-3 text-right w-32">মোট মূল্য (Total)</th>
+                          <th className="p-3 border-r border-slate-700">বিবরণ / মালামাল ও সার্ভিস (Items & Services)</th>
+                          <th className="p-3 border-r border-slate-700 text-center w-24">পরিমাণ (Qty)</th>
+                          <th className="p-3 border-r border-slate-700 text-right w-28">দর (Rate)</th>
+                          <th className="p-3 text-right w-32">মোট (Total)</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y-2 divide-black">
+                      <tbody className="divide-y divide-slate-200">
                         {previewInvoice.type === 'quotations' ? (
                           previewInvoice.data.items?.map((item: any, idx: number) => (
                             <tr key={item.id || idx} className="hover:bg-slate-50">
@@ -1392,48 +2584,119 @@ export default function InvoiceHub({
                             <td className="p-3 text-right font-mono">{formatCurrency(previewInvoice.data.totalAmount)}</td>
                           </tr>
                         ) : previewInvoice.type === 'event' ? (
-                          <>
-                            <tr>
-                              <td className="p-3 border-r-2 border-black text-center font-mono">১</td>
-                              <td className="p-3 border-r-2 border-black">
-                                <p className="font-black text-black">ডেকোরেশন প্যাকেজ: {previewInvoice.data.decorationPackage}</p>
-                                <div className="text-[10px] text-slate-600 mt-1 font-bold space-y-1">
-                                  <p>ব্যবহৃত মালামাল চেকলিস্ট:</p>
-                                  <ul className="list-disc list-inside pl-2">
-                                    {previewInvoice.data.materialsUsed.map((m: any, idx: number) => (
-                                      <li key={idx}>{m.name} (পরিমাণ: {m.qty} টি)</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              </td>
-                              <td className="p-3 border-r-2 border-black text-center font-mono">১ প্যাকেজ</td>
-                              <td className="p-3 border-r-2 border-black text-right font-mono">{formatCurrency(previewInvoice.data.totalCost - previewInvoice.data.labourCost - previewInvoice.data.transportCost - previewInvoice.data.extraCharges)}</td>
-                              <td className="p-3 text-right font-mono">{formatCurrency(previewInvoice.data.totalCost - previewInvoice.data.labourCost - previewInvoice.data.transportCost - previewInvoice.data.extraCharges)}</td>
-                            </tr>
-                            <tr>
-                              <td className="p-3 border-r-2 border-black text-center font-mono">২</td>
-                              <td className="p-3 border-r-2 border-black">শ্রমিক মজুরি (Labour Cost)</td>
-                              <td className="p-3 border-r-2 border-black text-center font-mono">-</td>
-                              <td className="p-3 border-r-2 border-black text-right font-mono">{formatCurrency(previewInvoice.data.labourCost)}</td>
-                              <td className="p-3 text-right font-mono">{formatCurrency(previewInvoice.data.labourCost)}</td>
-                            </tr>
-                            <tr>
-                              <td className="p-3 border-r-2 border-black text-center font-mono">৩</td>
-                              <td className="p-3 border-r-2 border-black">যানবাহন ও লজিস্টিকস চার্জ (Transport)</td>
-                              <td className="p-3 border-r-2 border-black text-center font-mono">-</td>
-                              <td className="p-3 border-r-2 border-black text-right font-mono">{formatCurrency(previewInvoice.data.transportCost)}</td>
-                              <td className="p-3 text-right font-mono">{formatCurrency(previewInvoice.data.transportCost)}</td>
-                            </tr>
-                            {previewInvoice.data.extraCharges > 0 && (
+                          previewInvoice.data.baseBudget !== undefined ? (
+                            <>
+                              {/* Final Invoice Item Breakdown */}
                               <tr>
-                                <td className="p-3 border-r-2 border-black text-center font-mono">৪</td>
-                                <td className="p-3 border-r-2 border-black">অতিরিক্ত চার্জ (Extra Charges)</td>
-                                <td className="p-3 border-r-2 border-black text-center font-mono">-</td>
-                                <td className="p-3 border-r-2 border-black text-right font-mono">{formatCurrency(previewInvoice.data.extraCharges)}</td>
-                                <td className="p-3 text-right font-mono">{formatCurrency(previewInvoice.data.extraCharges)}</td>
+                                <td className="p-3 border-r-2 border-black text-center font-mono">১</td>
+                                <td className="p-3 border-r-2 border-black">
+                                  <p className="font-black text-black">মূল ইভেন্ট বাজেট চুক্তি (Base Contract Budget)</p>
+                                  <span className="text-[10px] text-slate-600 font-bold block mt-0.5">
+                                    প্যাকেজ / কোটেশন রেফারেন্স: {previewInvoice.data.quotationNo || previewInvoice.data.decorationPackage || 'মূল চুক্তি'}
+                                  </span>
+                                </td>
+                                <td className="p-3 border-r-2 border-black text-center font-mono">১ ইভেন্ট</td>
+                                <td className="p-3 border-r-2 border-black text-right font-mono">{formatCurrency(previewInvoice.data.baseBudget)}</td>
+                                <td className="p-3 text-right font-mono font-black">{formatCurrency(previewInvoice.data.baseBudget)}</td>
                               </tr>
-                            )}
-                          </>
+
+                              {/* Extra Items */}
+                              {previewInvoice.data.extraItems?.map((extra: EventExtraItem, eIdx: number) => (
+                                <tr key={extra.id || eIdx} className="bg-amber-50/50">
+                                  <td className="p-3 border-r-2 border-black text-center font-mono">{eIdx + 2}</td>
+                                  <td className="p-3 border-r-2 border-black">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[9px] bg-amber-200 border border-black px-1.5 py-0.2 rounded font-black text-amber-900 uppercase">
+                                        অতিরিক্ত কাজ
+                                      </span>
+                                      <span className="font-black text-black">{extra.name}</span>
+                                    </div>
+                                    {extra.note && (
+                                      <p className="text-[10px] text-slate-600 italic mt-0.5">নোট: {extra.note}</p>
+                                    )}
+                                  </td>
+                                  <td className="p-3 border-r-2 border-black text-center font-mono">{extra.qty} {extra.unit || 'টি'}</td>
+                                  <td className="p-3 border-r-2 border-black text-right font-mono">{formatCurrency(extra.rate)}</td>
+                                  <td className="p-3 text-right font-mono font-black">{formatCurrency(extra.total)}</td>
+                                </tr>
+                              ))}
+
+                              {previewInvoice.data.labourCost > 0 && (
+                                <tr>
+                                  <td className="p-3 border-r-2 border-black text-center font-mono">#</td>
+                                  <td className="p-3 border-r-2 border-black font-black text-black">অতিরিক্ত লেবার ও ওভারটাইম মজুরি</td>
+                                  <td className="p-3 border-r-2 border-black text-center font-mono">-</td>
+                                  <td className="p-3 border-r-2 border-black text-right font-mono">{formatCurrency(previewInvoice.data.labourCost)}</td>
+                                  <td className="p-3 text-right font-mono font-black">{formatCurrency(previewInvoice.data.labourCost)}</td>
+                                </tr>
+                              )}
+
+                              {previewInvoice.data.transportCost > 0 && (
+                                <tr>
+                                  <td className="p-3 border-r-2 border-black text-center font-mono">#</td>
+                                  <td className="p-3 border-r-2 border-black font-black text-black">অতিরিক্ত যানবাহন ও পরিবহন চার্জ</td>
+                                  <td className="p-3 border-r-2 border-black text-center font-mono">-</td>
+                                  <td className="p-3 border-r-2 border-black text-right font-mono">{formatCurrency(previewInvoice.data.transportCost)}</td>
+                                  <td className="p-3 text-right font-mono font-black">{formatCurrency(previewInvoice.data.transportCost)}</td>
+                                </tr>
+                              )}
+
+                              {previewInvoice.data.damageDeduction > 0 && (
+                                <tr className="bg-rose-50/50">
+                                  <td className="p-3 border-r-2 border-black text-center font-mono">#</td>
+                                  <td className="p-3 border-r-2 border-black font-black text-rose-900">
+                                    মালামাল ক্ষতিপূরণ / ড্যামেজ চার্জ (Damage Compensation)
+                                  </td>
+                                  <td className="p-3 border-r-2 border-black text-center font-mono">-</td>
+                                  <td className="p-3 border-r-2 border-black text-right font-mono">{formatCurrency(previewInvoice.data.damageDeduction)}</td>
+                                  <td className="p-3 text-right font-mono font-black text-rose-900">{formatCurrency(previewInvoice.data.damageDeduction)}</td>
+                                </tr>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <tr>
+                                <td className="p-3 border-r-2 border-black text-center font-mono">১</td>
+                                <td className="p-3 border-r-2 border-black">
+                                  <p className="font-black text-black">ডেকোরেশন প্যাকেজ: {previewInvoice.data.decorationPackage}</p>
+                                  <div className="text-[10px] text-slate-600 mt-1 font-bold space-y-1">
+                                    <p>ব্যবহৃত মালামাল চেকলিস্ট:</p>
+                                    <ul className="list-disc list-inside pl-2">
+                                      {previewInvoice.data.materialsUsed?.map((m: any, idx: number) => (
+                                        <li key={idx}>{m.name} (পরিমাণ: {m.qty} টি)</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                </td>
+                                <td className="p-3 border-r-2 border-black text-center font-mono">১ প্যাকেজ</td>
+                                <td className="p-3 border-r-2 border-black text-right font-mono">{formatCurrency(previewInvoice.data.totalCost - (previewInvoice.data.labourCost || 0) - (previewInvoice.data.transportCost || 0) - (previewInvoice.data.extraCharges || 0))}</td>
+                                <td className="p-3 text-right font-mono">{formatCurrency(previewInvoice.data.totalCost - (previewInvoice.data.labourCost || 0) - (previewInvoice.data.transportCost || 0) - (previewInvoice.data.extraCharges || 0))}</td>
+                              </tr>
+                              <tr>
+                                <td className="p-3 border-r-2 border-black text-center font-mono">২</td>
+                                <td className="p-3 border-r-2 border-black">শ্রমিক মজুরি (Labour Cost)</td>
+                                <td className="p-3 border-r-2 border-black text-center font-mono">-</td>
+                                <td className="p-3 border-r-2 border-black text-right font-mono">{formatCurrency(previewInvoice.data.labourCost)}</td>
+                                <td className="p-3 text-right font-mono">{formatCurrency(previewInvoice.data.labourCost)}</td>
+                              </tr>
+                              <tr>
+                                <td className="p-3 border-r-2 border-black text-center font-mono">৩</td>
+                                <td className="p-3 border-r-2 border-black">যানবাহন ও লজিস্টিকস চার্জ (Transport)</td>
+                                <td className="p-3 border-r-2 border-black text-center font-mono">-</td>
+                                <td className="p-3 border-r-2 border-black text-right font-mono">{formatCurrency(previewInvoice.data.transportCost)}</td>
+                                <td className="p-3 text-right font-mono">{formatCurrency(previewInvoice.data.transportCost)}</td>
+                              </tr>
+                              {previewInvoice.data.extraCharges > 0 && (
+                                <tr>
+                                  <td className="p-3 border-r-2 border-black text-center font-mono">৪</td>
+                                  <td className="p-3 border-r-2 border-black">অতিরিক্ত চার্জ (Extra Charges)</td>
+                                  <td className="p-3 border-r-2 border-black text-center font-mono">-</td>
+                                  <td className="p-3 border-r-2 border-black text-right font-mono">{formatCurrency(previewInvoice.data.extraCharges)}</td>
+                                  <td className="p-3 text-right font-mono">{formatCurrency(previewInvoice.data.extraCharges)}</td>
+                                </tr>
+                              )}
+                            </>
+                          )
                         ) : (
                           previewInvoice.data.items?.map((item: any, idx: number) => (
                             <tr key={idx}>
@@ -1453,17 +2716,32 @@ export default function InvoiceHub({
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-stretch gap-6 border-b-2 border-black pb-4">
                     
                     {/* QR Verification details */}
-                    <div className="flex items-center gap-3 border-2 border-black p-3 bg-slate-50 shadow-[2px_2px_0px_0px_#000000] w-full sm:w-auto">
-                      <div className="w-16 h-16 border border-black bg-white flex flex-wrap p-1 gap-1 shrink-0">
-                        <div className="w-7 h-7 bg-black"></div>
-                        <div className="w-7 h-7 bg-white border border-black flex items-center justify-center text-[5px] font-mono">QR</div>
-                        <div className="w-7 h-7 bg-white border border-black"></div>
-                        <div className="w-7 h-7 bg-black"></div>
+                    <div className="flex items-center gap-3.5 border-2 border-black p-3 bg-gradient-to-br from-slate-50 to-amber-50/40 shadow-[2px_2px_0px_0px_#000000] w-full sm:w-auto rounded-none">
+                      <div className="w-20 h-20 border-2 border-black bg-white flex items-center justify-center p-1 shrink-0 shadow-[1px_1px_0px_0px_#000000] relative">
+                        {qrDataUrl ? (
+                          <img 
+                            src={qrDataUrl} 
+                            alt="Invoice QR Verification" 
+                            className="w-full h-full object-contain"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
+                            <QrIcon size={24} className="text-slate-800" />
+                            <span className="text-[7px] font-black text-slate-600">QR CODE</span>
+                          </div>
+                        )}
                       </div>
                       <div>
-                        <span className="text-[9px] font-black uppercase text-black block tracking-wider">QR ভেরিফিকেশন কোড</span>
-                        <p className="text-[10px] text-slate-700 font-bold leading-tight mt-1">মোবাইল ক্যামেরা দিয়ে স্ক্যান করে ইনভয়েসের সত্যতা যাচাই করুন।</p>
-                        <span className="text-[9px] font-black text-emerald-700 mt-1 block">✓ VERIFIED BY RD ERP</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-black uppercase text-black tracking-wider">অফিসিয়াল ডিজিটাল QR কোড</span>
+                          <span className="bg-emerald-100 text-emerald-900 text-[8px] font-black px-1 py-0.5 border border-black uppercase">Verified</span>
+                        </div>
+                        <p className="text-[10px] text-slate-700 font-bold leading-tight mt-1 max-w-[200px]">
+                          স্মার্টফোন ক্যামেরা দিয়ে স্ক্যান করে সরাসরি ইনভয়েসের সত্যতা ও বিবরণ যাচাই করুন।
+                        </p>
+                        <span className="text-[9px] font-black text-emerald-800 mt-1 flex items-center gap-1">
+                          ✓ VERIFIED BY RITTIKA EVENT MANAGEMENT
+                        </span>
                       </div>
                     </div>
 
@@ -1514,10 +2792,66 @@ export default function InvoiceHub({
                           <span className="font-mono">{formatCurrency(previewInvoice.data.totalAmount)}</span>
                         </div>
                       ) : previewInvoice.type === 'event' ? (
-                        <div className="flex justify-between border-b border-slate-200 pb-1">
-                          <span className="text-slate-600">সর্বমোট খরচ:</span>
-                          <span className="font-mono">{formatCurrency(previewInvoice.data.totalCost)}</span>
-                        </div>
+                        previewInvoice.data.baseBudget !== undefined ? (
+                          <>
+                            {/* Final Event Bill Breakdown */}
+                            <div className="flex justify-between border-b border-slate-200 pb-1">
+                              <span className="text-slate-600">মূল চুক্তি বাজেট:</span>
+                              <span className="font-mono">{formatCurrency(previewInvoice.data.baseBudget)}</span>
+                            </div>
+                            {previewInvoice.data.extraWorkCost > 0 && (
+                              <div className="flex justify-between border-b border-slate-200 pb-1 text-amber-700">
+                                <span>অতিরিক্ত কাজের বিল:</span>
+                                <span className="font-mono">+{formatCurrency(previewInvoice.data.extraWorkCost)}</span>
+                              </div>
+                            )}
+                            {(previewInvoice.data.transportCost > 0 || previewInvoice.data.labourCost > 0) && (
+                              <div className="flex justify-between border-b border-slate-200 pb-1 text-slate-700">
+                                <span>অতিরিক্ত পরিবহন ও লেবার:</span>
+                                <span className="font-mono">+{formatCurrency((previewInvoice.data.transportCost || 0) + (previewInvoice.data.labourCost || 0))}</span>
+                              </div>
+                            )}
+                            {previewInvoice.data.damageDeduction > 0 && (
+                              <div className="flex justify-between border-b border-slate-200 pb-1 text-rose-700">
+                                <span>মালামাল ক্ষতিপূরণ / ড্যামেজ:</span>
+                                <span className="font-mono">+{formatCurrency(previewInvoice.data.damageDeduction)}</span>
+                              </div>
+                            )}
+                            {previewInvoice.data.discount > 0 && (
+                              <div className="flex justify-between border-b border-slate-200 pb-1 text-rose-600">
+                                <span>বিশেষ ছাড় (Discount):</span>
+                                <span className="font-mono">-{formatCurrency(previewInvoice.data.discount)}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between border-b-2 border-black pb-1 pt-1 bg-teal-50 px-2">
+                              <span className="text-black uppercase">সর্বমোট চূড়ান্ত বিল (Net Payable):</span>
+                              <span className="font-mono text-base text-black font-black">
+                                {formatCurrency(previewInvoice.data.netPayable || previewInvoice.data.totalCost)}
+                              </span>
+                            </div>
+                            {previewInvoice.data.advancePaid > 0 && (
+                              <div className="flex justify-between border-b border-slate-200 pb-1 pt-1 text-emerald-700">
+                                <span>
+                                  পরিশোধিত অগ্রিম ({previewInvoice.data.advancePaymentMethod || 'অগ্রিম'}):
+                                </span>
+                                <span className="font-mono font-black">-{formatCurrency(previewInvoice.data.advancePaid)}</span>
+                              </div>
+                            )}
+                            <div className={`flex justify-between pt-1 px-2 border-2 border-black ${previewInvoice.data.dueAmount > 0 ? 'bg-rose-100 text-rose-950' : 'bg-emerald-100 text-emerald-950'}`}>
+                              <span className="uppercase font-black">
+                                {previewInvoice.data.dueAmount > 0 ? 'অবশিষ্ট প্রদেয় বকেয়া বিল:' : 'সম্পূর্ণ পরিশোধিত (Paid):'}
+                              </span>
+                              <span className="font-mono text-base font-black">
+                                {formatCurrency(previewInvoice.data.dueAmount || 0)}
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex justify-between border-b border-slate-200 pb-1">
+                            <span className="text-slate-600">সর্বমোট খরচ:</span>
+                            <span className="font-mono">{formatCurrency(previewInvoice.data.totalCost)}</span>
+                          </div>
+                        )
                       ) : previewInvoice.type === 'rental' ? (
                         <>
                           <div className="flex justify-between border-b border-slate-200 pb-1">
@@ -1556,38 +2890,39 @@ export default function InvoiceHub({
                     </div>
                   </div>
 
-                  {/* Terms & Conditions Section (Especially for Quotations) */}
-                  {previewInvoice.type === 'quotations' && previewInvoice.data.termsAndConditions && (
-                    <div className="border-2 border-black p-3 bg-slate-50 text-[11px] space-y-1.5">
-                      <span className="font-black uppercase text-black block tracking-wider">
-                        বাজেট শর্তাবলী ও নিয়মাবলী (Terms & Conditions):
+                  {/* Terms & Conditions Section (For Quotations & Final Invoices) */}
+                  {previewInvoice.data.termsAndConditions && (
+                    <div className="border border-slate-300 rounded-xl p-4 bg-slate-50/70 text-xs space-y-1.5 shadow-sm">
+                      <span className="font-black uppercase text-slate-900 block tracking-wider text-[11px] flex items-center gap-1.5">
+                        <FileText size={13} className="text-slate-700" />
+                        {previewInvoice.type === 'quotations' ? 'বাজেট শর্তাবলী ও নিয়মাবলী (Terms & Conditions):' : 'চূড়ান্ত বিলের শর্তাবলী ও বিবরণ (Final Bill Terms):'}
                       </span>
-                      <p className="whitespace-pre-line text-slate-800 font-bold leading-relaxed">
+                      <p className="whitespace-pre-line text-slate-700 font-medium leading-relaxed pl-4 border-l-2 border-amber-400">
                         {previewInvoice.data.termsAndConditions}
                       </p>
                     </div>
                   )}
 
-                  {/* Digital Signature Panel */}
-                  <div className="flex justify-between items-end pt-6">
+                  {/* Digital Signature Panel & Document Footer */}
+                  <div className="flex flex-col sm:flex-row justify-between items-center sm:items-end pt-6 gap-4 border-t border-slate-200">
                     <div>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
                         {previewInvoice.type === 'quotations' ? 'কোটেশন স্ট্যাটাস' : 'পেমেন্ট স্ট্যাটাস'}
                       </p>
-                      <span className={`inline-block border-2 border-black px-2.5 py-1 text-xs font-black uppercase mt-1 shadow-[2px_2px_0px_0px_#000000] ${
+                      <span className={`inline-block border px-3 py-1 text-xs font-black uppercase mt-1.5 rounded-md shadow-sm ${
                         previewInvoice.type === 'quotations' 
-                          ? previewInvoice.data.status === 'Converted' ? 'bg-teal-300 text-black' : 'bg-yellow-300 text-black'
-                          : (previewInvoice.data.paymentStatus === 'Paid' || previewInvoice.type === 'sales') ? 'bg-emerald-300 text-black' : 'bg-rose-300 text-black'
+                          ? previewInvoice.data.status === 'Converted' ? 'bg-teal-50 border-teal-400 text-teal-900' : 'bg-amber-50 border-amber-400 text-amber-900'
+                          : (previewInvoice.data.paymentStatus === 'Paid' || (previewInvoice.type === 'event' && previewInvoice.data.dueAmount === 0) || previewInvoice.type === 'sales') ? 'bg-emerald-50 border-emerald-400 text-emerald-900' : 'bg-rose-50 border-rose-400 text-rose-900'
                       }`}>
                         {previewInvoice.type === 'quotations'
-                          ? (previewInvoice.data.status === 'Converted' ? 'কনফার্মড ইভেন্ট (Converted)' : 'প্রস্তাবনা (Quotation)')
-                          : (previewInvoice.data.paymentStatus === 'Paid' || previewInvoice.type === 'sales') ? 'পরিশোধিত (Paid)' : 'বকেয়া (Due)'}
+                          ? (previewInvoice.data.status === 'Converted' ? '✓ কনফার্মড ইভেন্ট (Converted)' : '● প্রস্তাবনা (Quotation)')
+                          : (previewInvoice.data.paymentStatus === 'Paid' || (previewInvoice.type === 'event' && previewInvoice.data.dueAmount === 0) || previewInvoice.type === 'sales') ? '✓ সম্পূর্ণ পরিশোধিত (Paid)' : '● বকেয়া বিল (Due)'}
                       </span>
                     </div>
                     
                     {/* Official Digital Signature */}
                     <div className="text-center">
-                      <div className="border-b-2 border-black pb-1 w-48 mx-auto flex items-center justify-center min-h-[50px]">
+                      <div className="border-b-2 border-slate-900 pb-1 w-52 mx-auto flex items-center justify-center min-h-[50px]">
                         {previewInvoice.data.signatureUrl || canvasSignature ? (
                           <img 
                             src={previewInvoice.data.signatureUrl || canvasSignature || ''} 
@@ -1595,12 +2930,17 @@ export default function InvoiceHub({
                             className="max-h-12 object-contain"
                           />
                         ) : (
-                          <span className={`text-xl text-indigo-600 tracking-wide ${selectedSigFont}`}>
+                          <span className={`text-xl text-slate-900 font-bold tracking-wide ${selectedSigFont}`}>
                             {typedSignature}
                           </span>
                         )}
                       </div>
-                      <span className="text-[10px] font-black uppercase text-slate-600 block mt-1.5">অনুমোদিত স্বাক্ষর (Authorized Signature)</span>
+                      <span className="text-[10px] font-black uppercase text-slate-700 block mt-1.5 tracking-wider">
+                        অনুমোদিত স্বাক্ষর (Authorized Signature)
+                      </span>
+                      <span className="text-[8px] font-bold text-slate-500 block uppercase">
+                        Rittika Event Management
+                      </span>
                     </div>
                   </div>
 
@@ -1637,6 +2977,516 @@ export default function InvoiceHub({
                   </div>
                 </div>
               )}
+            </div>
+          ) : isCreatingFinalInvoice ? (
+            
+            /* 🌟 INTERACTIVE EVENT COMPLETION FINAL INVOICE BUILDER */
+            <div className="neo-card p-6 space-y-6 bg-white border-4 border-black shadow-[6px_6px_0px_0px_#000000]" id="final-invoice-builder-form">
+              
+              {/* Form Header */}
+              <div className="flex items-center justify-between border-b-2 border-black pb-3">
+                <div>
+                  <h3 className="text-lg font-black uppercase italic text-black flex items-center gap-2">
+                    <Sparkles size={20} className="text-teal-600" />
+                    ইভেন্ট সমাপ্তি চূড়ান্ত ফাইনাল ইনভয়েস বিল্ডার (Event Final Bill Generator)
+                  </h3>
+                  <p className="text-xs font-bold text-slate-600 mt-0.5">
+                    ইভেন্ট সম্পন্ন হওয়ার পর মূল বাজেট, অগ্রিম প্রদান, অতিরিক্ত কাজের আইটেম, ওভারটাইম লেবার, পরিবহন এবং ক্ষতিপূরণ হিসাব করে চূড়ান্ত বিল তৈরি করুন।
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsCreatingFinalInvoice(false)}
+                  className="neo-btn px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 font-bold"
+                >
+                  বাতিল (Close)
+                </button>
+              </div>
+
+              {/* Section 1: Event & Quotation Linkage */}
+              <div className="space-y-4 bg-slate-50 p-4 border-2 border-black">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-black flex items-center gap-1.5">
+                    <span className="w-5 h-5 bg-black text-yellow-400 rounded-full flex items-center justify-center text-[11px]">১</span>
+                    ইভেন্ট / কোটেশন নির্বাচন ও সাধারণ তথ্য
+                  </h4>
+                  <span className="text-[10px] bg-teal-100 border border-teal-800 px-2 py-0.5 font-bold text-teal-900">
+                    অটো-লিঙ্ক সক্রিয়
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block mb-1 text-[11px] font-black uppercase">কোটেশন থেকে তথ্য লোড করুন</label>
+                    <select
+                      value={finalSelectedQuotationId}
+                      onChange={(e) => handleQuotationSelectForFinal(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-2 text-xs font-bold"
+                    >
+                      <option value="">-- বিদ্যমান বাজেট কোটেশন নির্বাচন করুন --</option>
+                      {quotations.map(q => (
+                        <option key={q.id} value={q.id}>
+                          {q.quotationNo} — {q.eventName} ({q.customerName}) [{formatCurrency(q.grandTotal)}]
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-[11px] font-black uppercase">সম্পন্ন ইভেন্ট থেকে লোড করুন</label>
+                    <select
+                      value={finalSelectedEventId}
+                      onChange={(e) => handleEventSelectForFinal(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-2 text-xs font-bold"
+                    >
+                      <option value="">-- সম্পন্ন ইভেন্ট নির্বাচন করুন --</option>
+                      {events.map(ev => {
+                        const c = customers.find(cust => cust.id === ev.customerId);
+                        return (
+                          <option key={ev.id} value={ev.id}>
+                            {ev.name} ({c ? c.name : 'Unknown'}) - {ev.date}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Meta Inputs */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs font-black">
+                  <div>
+                    <label className="block mb-1 text-[11px]">ফাইনাল ইনভয়েস নম্বর</label>
+                    <input
+                      type="text"
+                      value={finalInvNo}
+                      onChange={(e) => setFinalInvNo(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-2 font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[11px]">ইনভয়েস তৈরির তারিখ</label>
+                    <input
+                      type="date"
+                      value={finalInvDate}
+                      onChange={(e) => setFinalInvDate(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-2 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[11px]">ইভেন্টের নাম / অনুষ্ঠান</label>
+                    <input
+                      type="text"
+                      value={finalEventName}
+                      onChange={(e) => setFinalEventName(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-2 font-bold"
+                      placeholder="যেমন: শুভ বিবাহ বা জন্মদিন"
+                    />
+                  </div>
+                </div>
+
+                {/* Client & Venue Details */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs font-black border-t border-slate-200">
+                  <div>
+                    <label className="block mb-1 text-[11px]">গ্রাহকের নাম (Customer Name)</label>
+                    <input
+                      type="text"
+                      value={finalCustomerName}
+                      onChange={(e) => setFinalCustomerName(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-2 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[11px]">গ্রাহকের মোবাইল নম্বর</label>
+                    <input
+                      type="text"
+                      value={finalCustomerMobile}
+                      onChange={(e) => setFinalCustomerMobile(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-2 font-bold font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[11px]">ভেন্যু / অনুষ্ঠানস্থল</label>
+                    <input
+                      type="text"
+                      value={finalVenue}
+                      onChange={(e) => setFinalVenue(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-2 font-bold"
+                    />
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Section 2: Base Budget & Advance Tracking */}
+              <div className="space-y-4 bg-yellow-50/70 p-4 border-2 border-black">
+                <h4 className="text-xs font-black uppercase tracking-wider text-black flex items-center gap-1.5">
+                  <span className="w-5 h-5 bg-black text-yellow-400 rounded-full flex items-center justify-center text-[11px]">২</span>
+                  মূল চুক্তি বাজেট ও পরিশোধিত অগ্রিম ট্র্যাকিং (Base Budget & Advance Received)
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs font-black">
+                  <div>
+                    <label className="block mb-1 text-[11px] text-slate-900">মূল বাজেট / চুক্তি মূল্য (টাকা)</label>
+                    <input
+                      type="number"
+                      value={finalBaseBudget}
+                      onChange={(e) => setFinalBaseBudget(Number(e.target.value))}
+                      className="w-full bg-white border-2 border-black p-2 font-bold font-mono text-base"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-[11px] text-emerald-900">পরিশোধিত অগ্রিম টাকা (Advance Paid)</label>
+                    <input
+                      type="number"
+                      value={finalAdvancePaid}
+                      onChange={(e) => setFinalAdvancePaid(Number(e.target.value))}
+                      className="w-full bg-white border-2 border-emerald-700 p-2 font-bold font-mono text-base text-emerald-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-[11px]">অগ্রিম প্রাপ্তির তারিখ</label>
+                    <input
+                      type="date"
+                      value={finalAdvanceDate}
+                      onChange={(e) => setFinalAdvanceDate(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-2 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-[11px]">অগ্রিম প্রাপ্তির মাধ্যম (বাছাই বা কাস্টম)</label>
+                    <input
+                      type="text"
+                      list="dl-payment-methods"
+                      placeholder="যেমন: বিকাশ বা নগদ"
+                      value={finalAdvanceMethod}
+                      onChange={(e) => setFinalAdvanceMethod(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-2 font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 3: Extra Items / Extra Work Added During Event */}
+              <div className="space-y-4 bg-white p-4 border-2 border-black">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-black flex items-center gap-1.5">
+                    <span className="w-5 h-5 bg-black text-yellow-400 rounded-full flex items-center justify-center text-[11px]">৩</span>
+                    ইভেন্টে অতিরিক্ত কাজের আইটেম ও বিল (Extra Work Done)
+                  </h4>
+                  <span className="text-xs font-black font-mono text-amber-900 bg-amber-100 px-2 py-0.5 border border-black">
+                    অতিরিক্ত আইটেম খরচ: {formatCurrency(finalExtraWorkCost)}
+                  </span>
+                </div>
+
+                {/* Quick Add Presets */}
+                <div className="p-3 bg-amber-50 border border-black space-y-2">
+                  <span className="text-[11px] font-black uppercase text-slate-700 block">
+                    ⚡ এক ক্লিকে অতিরিক্ত কাজের প্রিসেট যোগ করুন:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {EXTRA_WORK_PRESETS.map((preset, pIdx) => (
+                      <button
+                        key={pIdx}
+                        type="button"
+                        onClick={() => handleApplyExtraPreset(preset)}
+                        className="text-[11px] font-bold bg-white hover:bg-yellow-300 border border-black px-2.5 py-1 rounded transition flex items-center gap-1 shadow-[1px_1px_0px_0px_#000000]"
+                      >
+                        <Plus size={11} />
+                        {preset.name} ({formatCurrency(preset.rate)})
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Manual Custom Extra Work Add Form */}
+                <div className="p-3 bg-slate-50 border-2 border-black space-y-3">
+                  <span className="text-[11px] font-black uppercase text-black block">
+                    + কাস্টম অতিরিক্ত কাজের এন্ট্রি:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs font-bold">
+                    <div className="sm:col-span-4">
+                      <label className="block text-[10px] uppercase mb-0.5">কাজের নাম / মালামালের বিবরণ</label>
+                      <input
+                        type="text"
+                        list="dl-stock-items"
+                        value={curExtraName}
+                        onChange={(e) => setCurExtraName(e.target.value)}
+                        placeholder="যেমন: অতিরিক্ত স্টেজ ফ্লাওয়ার বা এন্ট্রি গেট"
+                        className="w-full bg-white border-2 border-black p-1.5"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] uppercase mb-0.5">পরিমাণ (Qty)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={curExtraQty}
+                        onChange={(e) => setCurExtraQty(Number(e.target.value))}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] uppercase mb-0.5">একক (Unit)</label>
+                      <input
+                        type="text"
+                        list="dl-units"
+                        value={curExtraUnit}
+                        onChange={(e) => setCurExtraUnit(e.target.value)}
+                        className="w-full bg-white border-2 border-black p-1.5"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] uppercase mb-0.5">দর (Rate)</label>
+                      <input
+                        type="number"
+                        value={curExtraRate}
+                        onChange={(e) => setCurExtraRate(Number(e.target.value))}
+                        className="w-full bg-white border-2 border-black p-1.5 font-mono"
+                      />
+                    </div>
+                    <div className="sm:col-span-2 flex items-end">
+                      <button
+                        type="button"
+                        onClick={handleAddExtraItem}
+                        className="w-full neo-btn py-1.5 bg-yellow-400 hover:bg-yellow-300 font-black uppercase text-xs shadow-[2px_2px_0px_0px_#000000]"
+                      >
+                        যোগ করুন
+                      </button>
+                    </div>
+                    <div className="sm:col-span-12">
+                      <input
+                        type="text"
+                        value={curExtraNote}
+                        onChange={(e) => setCurExtraNote(e.target.value)}
+                        placeholder="অতিরিক্ত কাজের স্পেসিফিকেশন বা গ্রাহকের অনুরোধের নোট (ঐচ্ছিক)"
+                        className="w-full bg-white border border-slate-400 p-1.5 text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Table of added extra items */}
+                {finalExtraItems.length > 0 ? (
+                  <div className="border-2 border-black overflow-x-auto">
+                    <table className="w-full text-left text-xs font-bold">
+                      <thead className="bg-slate-100 border-b-2 border-black text-[10px] uppercase font-black">
+                        <tr>
+                          <th className="p-2 border-r-2 border-black text-center w-10">#</th>
+                          <th className="p-2 border-r-2 border-black">কাজের বিবরণ</th>
+                          <th className="p-2 border-r-2 border-black text-center w-20">পরিমাণ</th>
+                          <th className="p-2 border-r-2 border-black text-right w-24">দর (Rate)</th>
+                          <th className="p-2 border-r-2 border-black text-right w-28">মোট (Total)</th>
+                          <th className="p-2 text-center w-12">অ্যাকশন</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y-2 divide-black">
+                        {finalExtraItems.map((item, idx) => (
+                          <tr key={item.id} className="hover:bg-slate-50">
+                            <td className="p-2 border-r-2 border-black text-center font-mono">{idx + 1}</td>
+                            <td className="p-2 border-r-2 border-black">
+                              <p className="font-black text-black">{item.name}</p>
+                              {item.note && <p className="text-[10px] text-slate-600 italic font-normal">{item.note}</p>}
+                            </td>
+                            <td className="p-2 border-r-2 border-black text-center font-mono">{item.qty} {item.unit}</td>
+                            <td className="p-2 border-r-2 border-black text-right font-mono">{formatCurrency(item.rate)}</td>
+                            <td className="p-2 border-r-2 border-black text-right font-mono font-black">{formatCurrency(item.total)}</td>
+                            <td className="p-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveExtraItem(item.id)}
+                                className="p-1 bg-red-100 hover:bg-red-500 hover:text-white border border-black rounded"
+                                title="মুছে ফেলুন"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-center py-4 text-xs font-bold text-slate-500 border border-dashed border-slate-300">
+                    এখনও কোনো অতিরিক্ত কাজের আইটেম যোগ করা হয়নি। উপরের প্রিসেট বা ফর্ম থেকে যোগ করুন।
+                  </p>
+                )}
+              </div>
+
+              {/* Section 4: Extra Labour, Transport, Damage Compensation, Discount */}
+              <div className="space-y-4 bg-slate-50 p-4 border-2 border-black">
+                <h4 className="text-xs font-black uppercase tracking-wider text-black flex items-center gap-1.5">
+                  <span className="w-5 h-5 bg-black text-yellow-400 rounded-full flex items-center justify-center text-[11px]">৪</span>
+                  অতিরিক্ত পরিবহন, লেবার, ক্ষতিপূরণ ও ছাড় (Logistics, Labour, Damage & Discount)
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs font-black">
+                  <div>
+                    <label className="block mb-1 text-[11px]">অতিরিক্ত পরিবহন / গাড়ি ভাড়া</label>
+                    <input
+                      type="number"
+                      value={finalExtraTransport}
+                      onChange={(e) => setFinalExtraTransport(Number(e.target.value))}
+                      className="w-full bg-white border-2 border-black p-2 font-bold font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-[11px]">অতিরিক্ত লেবার / ওভারটাইম মজুরি</label>
+                    <input
+                      type="number"
+                      value={finalExtraLabour}
+                      onChange={(e) => setFinalExtraLabour(Number(e.target.value))}
+                      className="w-full bg-white border-2 border-black p-2 font-bold font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-[11px] text-rose-900">মালামাল ড্যামেজ / ক্ষতিপূরণ ফি</label>
+                    <input
+                      type="number"
+                      value={finalDamageCharge}
+                      onChange={(e) => setFinalDamageCharge(Number(e.target.value))}
+                      className="w-full bg-white border-2 border-rose-700 p-2 font-bold font-mono text-rose-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-[11px] text-indigo-900">বিশেষ ছাড় (Discount / কম)</label>
+                    <input
+                      type="number"
+                      value={finalDiscount}
+                      onChange={(e) => setFinalDiscount(Number(e.target.value))}
+                      className="w-full bg-white border-2 border-indigo-700 p-2 font-bold font-mono text-indigo-900"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 5: Payment Settlement & Terms */}
+              <div className="space-y-4 bg-teal-50/50 p-4 border-2 border-black">
+                <h4 className="text-xs font-black uppercase tracking-wider text-black flex items-center gap-1.5">
+                  <span className="w-5 h-5 bg-black text-yellow-400 rounded-full flex items-center justify-center text-[11px]">৫</span>
+                  পেমেন্ট সেটেলমেন্ট ও ইনভয়েস শর্তাবলী (Settlement Status & Terms)
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-black">
+                  <div>
+                    <label className="block mb-1 text-[11px]">পেমেন্ট স্ট্যাটাস</label>
+                    <select
+                      value={finalPaymentStatus}
+                      onChange={(e) => setFinalPaymentStatus(e.target.value as any)}
+                      className="w-full bg-white border-2 border-black p-2 font-bold"
+                    >
+                      <option value="Paid">✓ সম্পূর্ণ পরিশোধিত (Paid in Full)</option>
+                      <option value="Partial">⚠️ আংশিক পরিশোধিত (Partial Payment)</option>
+                      <option value="Pending">❌ বকেয়া বিল (Pending / Due)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-[11px]">ফাইনাল পেমেন্ট পরিশোধ মাধ্যম (বাছাই বা কাস্টম)</label>
+                    <input
+                      type="text"
+                      list="dl-payment-methods"
+                      placeholder="যেমন: নগদ, বিকাশ বা ব্যাংক"
+                      value={finalPaymentMethod}
+                      onChange={(e) => setFinalPaymentMethod(e.target.value)}
+                      className="w-full bg-white border-2 border-black p-2 font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-black uppercase block">ফাইনাল ইনভয়েস শর্তাবলী ও নোট</label>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setFinalTerms(`১. ইভেন্ট সমাপ্তির পর সমস্ত মালামাল সঠিক অবস্থায় গ্রহণ ও হিসাব সম্পন্ন করা হয়েছে।\n২. অতিরিক্ত কাজের জন্য নির্ধারিত বিল অনুমোদিত।\n৩. কোনো অসঙ্গতি থাকলে বিল প্রাপ্তির ৩ দিনের মধ্যে অবহিত করুন।`)}
+                        className="text-[10px] font-bold bg-white hover:bg-slate-200 border border-black px-2 py-0.5 rounded"
+                      >
+                        স্ট্যান্ডার্ড শর্তাবলী
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFinalTerms(`১. ইভেন্টের সম্পূর্ণ বিল সফলভাবে পরিশোধিত হয়েছে। কোনো প্রকার বকেয়া নেই।\n২. রিত্তিকা ইভেন্ট ম্যানেজমেন্টের সাথে কাজ করার জন্য ধন্যবাদ!`)}
+                        className="text-[10px] font-bold bg-white hover:bg-slate-200 border border-black px-2 py-0.5 rounded"
+                      >
+                        পরিশোধিত রসিদ
+                      </button>
+                    </div>
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={finalTerms}
+                    onChange={(e) => setFinalTerms(e.target.value)}
+                    className="w-full bg-white border-2 border-black p-2 text-xs font-bold leading-relaxed"
+                  />
+                </div>
+              </div>
+
+              {/* Real-time Final Calculation Breakdown Card */}
+              <div className="neo-card p-5 bg-yellow-100 border-4 border-black space-y-3">
+                <h4 className="text-sm font-black uppercase tracking-wider text-black border-b-2 border-black pb-2 flex items-center justify-between">
+                  <span>📊 চূড়ান্ত আর্থিক হিসাবের সারসংক্ষেপ (Final Financial Summary)</span>
+                  <span className="font-mono text-xs">{finalInvNo}</span>
+                </h4>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-black">
+                  <div className="bg-white p-2.5 border-2 border-black">
+                    <span className="text-[10px] uppercase text-slate-500 block">মূল চুক্তি বাজেট</span>
+                    <span className="text-sm font-mono">{formatCurrency(finalBaseBudget)}</span>
+                  </div>
+
+                  <div className="bg-white p-2.5 border-2 border-black">
+                    <span className="text-[10px] uppercase text-amber-700 block">অতিরিক্ত কাজের মোট</span>
+                    <span className="text-sm font-mono text-amber-900">+{formatCurrency(finalExtraWorkCost)}</span>
+                  </div>
+
+                  <div className="bg-white p-2.5 border-2 border-black">
+                    <span className="text-[10px] uppercase text-slate-700 block">লেবার/পরিবহন/ড্যামেজ</span>
+                    <span className="text-sm font-mono">+{formatCurrency(finalExtraTransport + finalExtraLabour + finalDamageCharge - finalDiscount)}</span>
+                  </div>
+
+                  <div className="bg-white p-2.5 border-2 border-black">
+                    <span className="text-[10px] uppercase text-teal-800 block">সর্বমোট প্রদেয় বিল</span>
+                    <span className="text-base font-mono font-black text-black">{formatCurrency(finalNetPayable)}</span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t-2 border-black flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-4 text-xs font-black">
+                    <span className="text-emerald-800 bg-emerald-100 border border-black px-2.5 py-1 rounded">
+                      পরিশোধিত অগ্রিম: -{formatCurrency(finalAdvancePaid)}
+                    </span>
+                    <span className={`px-2.5 py-1 rounded border border-black ${finalDueAmount > 0 ? 'bg-rose-200 text-rose-950 font-black' : 'bg-emerald-200 text-emerald-950'}`}>
+                      {finalDueAmount > 0 ? `বকেয়া ব্যালেন্স: ${formatCurrency(finalDueAmount)}` : '✓ পূর্ণ পরিশোধিত'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingFinalInvoice(false)}
+                      className="neo-btn px-4 py-2 bg-white hover:bg-slate-100 text-black font-black uppercase text-xs"
+                    >
+                      বাতিল
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveFinalInvoice}
+                      className="neo-btn px-6 py-2.5 bg-yellow-400 hover:bg-yellow-300 text-black font-black uppercase text-xs tracking-wider shadow-[3px_3px_0px_0px_#000000] flex items-center gap-2"
+                    >
+                      <Sparkles size={15} />
+                      💾 ফাইনাল ইনভয়েস সংরক্ষণ ও প্রিন্ট প্রিভিউ
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
             </div>
           ) : activeTab === 'quotations' ? (
             
@@ -1831,41 +3681,52 @@ export default function InvoiceHub({
                       
                       {/* Category Selection */}
                       <div>
-                        <label className="block mb-1 text-[11px]">ক্যাটাগরি নির্বাচন</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px]">ক্যাটাগরি (বাছাই বা কাস্টম)</label>
+                          <span className="text-[9px] text-slate-500 font-bold">ড্রপডাউন/টাইপ</span>
+                        </div>
+                        <input
+                          type="text"
+                          list="dl-quotation-categories"
+                          value={customCategoryText || (curCategoryOption === 'অন্যান্য / কাস্টম ক্যাটাগরি' ? '' : curCategoryOption)}
+                          onChange={(e) => {
+                            setCustomCategoryText(e.target.value);
+                            setCurCategoryOption(e.target.value);
+                          }}
+                          placeholder="যেমন: প্যান্ডেল ও স্টেজ / ড্রোন"
+                          className="w-full bg-slate-50 border-2 border-black p-2 font-bold"
+                        />
+                      </div>
+
+                      {/* Quick Category Presets dropdown */}
+                      <div>
+                        <label className="block mb-1 text-[11px]">প্রিসেট ক্যাটাগরি থেকে বাছুন</label>
                         <select
-                          value={curCategoryOption}
-                          onChange={(e) => setCurCategoryOption(e.target.value)}
+                          value={CATEGORY_PRESETS.includes(curCategoryOption) ? curCategoryOption : ''}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              setCurCategoryOption(e.target.value);
+                              setCustomCategoryText(e.target.value);
+                            }
+                          }}
                           className="w-full bg-slate-50 border-2 border-black p-2 font-bold"
                         >
+                          <option value="">-- দ্রুত প্রিসেট তালিকা --</option>
                           {CATEGORY_PRESETS.map(cat => (
                             <option key={cat} value={cat}>{cat}</option>
                           ))}
                         </select>
                       </div>
 
-                      {/* If custom category selected */}
-                      {curCategoryOption === 'অন্যান্য / কাস্টম ক্যাটাগরি' && (
-                        <div>
-                          <label className="block mb-1 text-[11px]">কাস্টম ক্যাটাগরির নাম</label>
-                          <input
-                            type="text"
-                            value={customCategoryText}
-                            onChange={(e) => setCustomCategoryText(e.target.value)}
-                            placeholder="যেমন: ড্রোন ও ফটোগ্রাফি"
-                            className="w-full bg-yellow-50 border-2 border-black p-2 font-bold"
-                          />
-                        </div>
-                      )}
-
                       {/* Quick stock picker helper */}
-                      <div className={curCategoryOption === 'অন্যান্য / কাস্টম ক্যাটাগরি' ? '' : 'sm:col-span-2'}>
+                      <div>
                         <label className="block mb-1 text-[11px]">স্টক থেকে দ্রুত বাছাই (ঐচ্ছিক)</label>
                         <select
                           value={selectedStockPickerCode}
                           onChange={(e) => handleStockPickerChange(e.target.value)}
                           className="w-full bg-slate-50 border-2 border-black p-2 font-bold text-slate-700"
                         >
-                          <option value="">-- স্টক মালামাল নির্বাচন করে অটোফিল করুন --</option>
+                          <option value="">-- স্টক মালামাল নির্বাচন --</option>
                           {stockItems.map(st => (
                             <option key={st.code} value={st.code}>
                               [{st.category}] {st.name} (ভাড়া: ৳{st.rentalPrice || st.sellingPrice || 0})
@@ -1879,12 +3740,13 @@ export default function InvoiceHub({
                     {/* Item Details */}
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs font-black">
                       <div className="sm:col-span-5">
-                        <label className="block mb-1 text-[11px]">মালামাল বা সেবার নাম *</label>
+                        <label className="block mb-1 text-[11px]">মালামাল বা সেবার নাম (বাছাই বা কাস্টম) *</label>
                         <input
                           type="text"
+                          list="dl-stock-items"
                           value={curItemName}
                           onChange={(e) => setCurItemName(e.target.value)}
-                          placeholder="যেমন: ক্রিস্টাল রিং এন্ট্রি গেইট"
+                          placeholder="যেমন: ক্রিস্টাল রিং এন্ট্রি গেইট বা কাস্টম সার্ভিস"
                           className="w-full bg-slate-50 border-2 border-black p-2 font-bold"
                         />
                       </div>
@@ -1902,6 +3764,7 @@ export default function InvoiceHub({
                         <label className="block mb-1 text-[11px]">একক (Unit)</label>
                         <input
                           type="text"
+                          list="dl-units"
                           value={curItemUnit}
                           onChange={(e) => setCurItemUnit(e.target.value)}
                           placeholder="টি/সেট/ফিট"
@@ -2269,26 +4132,37 @@ export default function InvoiceHub({
                             </span>
                           </div>
 
-                          {q.status !== 'Converted' ? (
+                          <div className="flex items-center gap-1.5">
                             <button
-                              onClick={() => {
-                                if (window.confirm(`আপনি কি "${q.eventName}" কোটেশনটিকে কনফার্মড ইভেন্টে রূপান্তর করতে চান?`)) {
-                                  if (onConvertQuotationToEvent) {
-                                    onConvertQuotationToEvent(q);
-                                  }
-                                }
-                              }}
-                              className="neo-btn px-2.5 py-1.5 text-[11px] bg-emerald-400 hover:bg-emerald-300 font-black uppercase flex items-center gap-1 shadow-[1px_1px_0px_0px_#000000]"
-                              title="কোটেশনটিকে চূড়ান্ত ইভেন্টে রূপান্তর করুন"
+                              onClick={() => handleOpenFinalInvoice(q)}
+                              className="neo-btn px-2.5 py-1.5 text-[11px] bg-amber-400 hover:bg-amber-300 font-black uppercase flex items-center gap-1 shadow-[1px_1px_0px_0px_#000000]"
+                              title="ইভেন্ট সম্পন্ন করার পর এই কোটেশনের চূড়ান্ত বিল তৈরি করুন"
                             >
-                              <CheckCircle2 size={12} />
-                              ইভেন্টে রূপান্তর
+                              <Sparkles size={12} />
+                              ফাইনাল বিল
                             </button>
-                          ) : (
-                            <span className="text-[10px] font-black text-teal-700 bg-teal-50 border border-teal-600 px-2 py-1 rounded">
-                              ✓ ইভেন্টে রূপান্তর সম্পন্ন
-                            </span>
-                          )}
+
+                            {q.status !== 'Converted' ? (
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`আপনি কি "${q.eventName}" কোটেশনটিকে কনফার্মড ইভেন্টে রূপান্তর করতে চান?`)) {
+                                    if (onConvertQuotationToEvent) {
+                                      onConvertQuotationToEvent(q);
+                                    }
+                                  }
+                                }}
+                                className="neo-btn px-2.5 py-1.5 text-[11px] bg-emerald-400 hover:bg-emerald-300 font-black uppercase flex items-center gap-1 shadow-[1px_1px_0px_0px_#000000]"
+                                title="কোটেশনটিকে চূড়ান্ত ইভেন্টে রূপান্তর করুন"
+                              >
+                                <CheckCircle2 size={12} />
+                                কনভার্ট
+                              </button>
+                            ) : (
+                              <span className="text-[10px] font-black text-teal-700 bg-teal-50 border border-teal-600 px-2 py-1 rounded">
+                                ✓ কনফার্মড
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                       </div>
@@ -2479,11 +4353,12 @@ export default function InvoiceHub({
                 <label className="uppercase block mb-1">সরবরাহকারী নাম (Supplier Name)</label>
                 <input
                   type="text"
+                  list="dl-suppliers"
                   required
                   value={pSupplierName}
                   onChange={(e) => setPSupplierName(e.target.value)}
                   className="w-full bg-slate-50 border-2 border-black p-2 font-bold"
-                  placeholder="যেমন: আরং ডেকোরেটরস"
+                  placeholder="যেমন: বেঙ্গল ইভেন্ট সাপ্লায়ার বা কাস্টম"
                 />
               </div>
 
@@ -2493,7 +4368,7 @@ export default function InvoiceHub({
                   type="text"
                   value={pSupplierMobile}
                   onChange={(e) => setPSupplierMobile(e.target.value)}
-                  className="w-full bg-slate-50 border-2 border-black p-2 font-bold"
+                  className="w-full bg-slate-50 border-2 border-black p-2 font-bold font-mono"
                   placeholder="যেমন: ০১৭০০০০০০০০"
                 />
               </div>
@@ -2502,11 +4377,12 @@ export default function InvoiceHub({
                 <label className="uppercase block mb-1">মালামাল / সামগ্রীর নাম (Item Name)</label>
                 <input
                   type="text"
+                  list="dl-stock-items"
                   required
                   value={pItemName}
                   onChange={(e) => setPItemName(e.target.value)}
                   className="w-full bg-slate-50 border-2 border-black p-2 font-bold"
-                  placeholder="যেমন: ক্রিস্টাল ঝাড়বাতি"
+                  placeholder="যেমন: ক্রিস্টাল ঝাড়বাতি বা কাস্টম আইটেম"
                 />
               </div>
 
@@ -2527,6 +4403,7 @@ export default function InvoiceHub({
                   <label className="uppercase block mb-1">একক (Unit)</label>
                   <input
                     type="text"
+                    list="dl-units"
                     required
                     value={pUnit}
                     onChange={(e) => setPUnit(e.target.value)}
@@ -2616,7 +4493,7 @@ export default function InvoiceHub({
                     setCanvasSignature(null); // Type overrides drawn canvas
                   }}
                   className="w-full bg-slate-50 border-2 border-black p-2 font-bold text-sm"
-                  placeholder="যেমন: রিত্তিকা ডেকোরেশন"
+                  placeholder="যেমন: রিত্তিকা ইভেন্ট ম্যানেজমেন্ট"
                 />
               </div>
 

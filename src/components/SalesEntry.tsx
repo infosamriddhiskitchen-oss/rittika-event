@@ -501,9 +501,15 @@ export default function SalesTracker({
               
               {/* Shop Header */}
               <div className="flex flex-col items-center justify-center text-center border-b-3 border-black pb-5 mb-5">
-                <h1 className="text-2xl font-black text-black tracking-tight uppercase italic">মেসার্স ডেকোরেশন মিনি ইআরপি</h1>
-                <p className="text-xs font-bold text-slate-700 mt-1">সব ধরণের বিয়ের গেট, স্টেজ লাইটিং, প্যান্ডেল এবং ডেকোরেশন সামগ্রী ভাড়া ও বিক্রেতা।</p>
-                <p className="text-[10px] font-black text-black uppercase mt-1">ধানমন্ডি শাখা, ঢাকা | মোবাইল: ০১৭০০-০০০০০০</p>
+                <h1 className="text-2xl font-black text-black tracking-tight uppercase italic">Rittika Event Management</h1>
+                <p className="text-xs font-bold text-slate-800 mt-1">সব ধরণের এক্সক্লুসিভ ওয়েডিং স্টেজ, লাইটিং, গেট ও ইভেন্ট ম্যানেজমেন্ট সার্ভিস।</p>
+                <div className="flex flex-wrap justify-center gap-3 mt-2 text-[10px] font-black uppercase text-black">
+                  <span>Owner/CEO: Robin Kumar</span>
+                  <span>•</span>
+                  <span>মোবাইল: +880 1721-779396</span>
+                  <span>•</span>
+                  <span>অফিসের ঠিকানা: রথপাড়া, ভেড়ামারা, কুষ্টিয়া, বাংলাদেশ — 7040</span>
+                </div>
               </div>
 
               {/* Invoice Meta */}

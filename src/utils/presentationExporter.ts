@@ -21,7 +21,7 @@ export async function exportPresentationToVideo(
   const {
     secondsPerSlide = 4,
     transitionEffect = 'kenburns',
-    companyName = 'রিত্তিকা ডেকোরেশন ও ইভেন্ট ম্যানেজমেন্ট',
+    companyName = 'রিত্তিকা ইভেন্ট ম্যানেজমেন্ট',
     onProgress
   } = options;
 
@@ -478,16 +478,16 @@ export async function exportPresentationToPDF(
   // Main Bengali Title
   ctx.fillStyle = '#ffffff';
   ctx.font = `900 58px ${fontBengali}`;
-  ctx.fillText('রিত্তিকা ডেকোরেশন ও ইভেন্ট ম্যানেজমেন্ট', canvasW / 2, 235);
+  ctx.fillText('রিত্তিকা ইভেন্ট ম্যানেজমেন্ট', canvasW / 2, 235);
 
   // Subtitle (English & Bengali)
   ctx.fillStyle = '#facc15';
   ctx.font = `bold 28px ${fontBengali}`;
-  ctx.fillText('এক্সক্লুসিভ প্রজেক্ট ও স্টেজ ডেকোরেশন প্রেজেন্টেশন ব্রোশিউর', canvasW / 2, 290);
+  ctx.fillText('এক্সক্লুসিভ প্রজেক্ট ও ইভেন্ট ডিজাইন প্রেজেন্টেশন ব্রোশিউর', canvasW / 2, 290);
 
   ctx.fillStyle = '#cbd5e1';
   ctx.font = `500 20px ${fontBengali}`;
-  ctx.fillText('Exclusive Event Stage Design, Lighting & Floral Decor Showcase', canvasW / 2, 330);
+  ctx.fillText('Exclusive Event Stage Design, Lighting & Floral Showcase', canvasW / 2, 330);
 
   // Center Presentation Details Card
   const cardW = 860;
@@ -510,7 +510,7 @@ export async function exportPresentationToPDF(
   ctx.stroke();
 
   // Category list
-  const catSummary = selectedCategories.length > 0 ? selectedCategories.join(' • ') : 'সকল ক্যাটাগরির নির্বাচিত ডেকোরেশন';
+  const catSummary = selectedCategories.length > 0 ? selectedCategories.join(' • ') : 'সকল ক্যাটাগরির নির্বাচিত কাজ';
   ctx.fillStyle = '#ffffff';
   ctx.font = `bold 20px ${fontBengali}`;
   ctx.fillText(`• অন্তর্ভুক্ত ক্যাটাগরি: `, cardX + 40, cardY + 125);
@@ -519,7 +519,7 @@ export async function exportPresentationToPDF(
 
   // Total Designs Count
   ctx.fillStyle = '#ffffff';
-  ctx.fillText(`• মোট ডেকোরেশন ডিজাইন: `, cardX + 40, cardY + 175);
+  ctx.fillText(`• মোট প্রজেক্ট ডিজাইন: `, cardX + 40, cardY + 175);
   ctx.fillStyle = '#facc15';
   ctx.fillText(`${toBengaliNumber(items.length)} টি প্রিমিয়াম প্রজেক্ট ও কনসেপ্ট`, cardX + 270, cardY + 175);
 
@@ -539,7 +539,7 @@ export async function exportPresentationToPDF(
   ctx.textAlign = 'center';
   ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
   ctx.font = `600 18px ${fontBengali}`;
-  ctx.fillText('সার্বিক পরিচালনায়: রিত্তিকা ডেকোরেশন ও ইভেন্ট ম্যানেজমেন্ট • ওয়েবসাইট ও পোর্টাল লিংক সহ', canvasW / 2, canvasH - 100);
+  ctx.fillText('সার্বিক পরিচালনায়: রিত্তিকা ইভেন্ট ম্যানেজমেন্ট • ওয়েবসাইট ও পোর্টাল লিংক সহ', canvasW / 2, canvasH - 100);
 
   // Add Cover Page to PDF
   const coverImgData = canvas.toDataURL('image/jpeg', 0.95);
@@ -574,11 +574,11 @@ export async function exportPresentationToPDF(
     ctx.textAlign = 'left';
     ctx.fillStyle = '#facc15';
     ctx.font = `bold 28px ${fontBengali}`;
-    ctx.fillText('রিত্তিকা ডেকোরেশন ও ইভেন্ট ম্যানেজমেন্ট', 60, 58);
+    ctx.fillText('রিত্তিকা ইভেন্ট ম্যানেজমেন্ট', 60, 58);
 
     ctx.fillStyle = '#cbd5e1';
     ctx.font = `600 16px ${fontBengali}`;
-    ctx.fillText('EXCLUSIVE DECORATION PORTFOLIO & CLIENT PRESENTATION', 60, 84);
+    ctx.fillText('EXCLUSIVE EVENT PORTFOLIO & CLIENT PRESENTATION', 60, 84);
 
     // Header Right: Slide Number Badge
     drawRoundedRect(canvasW - 280, 24, 220, 52, 26, 'rgba(255, 255, 255, 0.15)', '#facc15', 2);
@@ -780,7 +780,7 @@ export async function exportPresentationToPDF(
     ctx.fillStyle = '#64748b';
     ctx.font = `600 15px ${fontBengali}`;
     ctx.textAlign = 'left';
-    ctx.fillText('✨ রিত্তিকা ডেকোরেশন ও ইভেন্ট ম্যানেজমেন্ট • মোবাইল: 01711-XXXXXX • ওয়েবসাইট ও লাইভ পোর্টাল বুকিং', 60, canvasH - 35);
+    ctx.fillText('✨ রিত্তিকা ইভেন্ট ম্যানেজমেন্ট • মোবাইল: 01721-779396 • ওয়েবসাইট ও লাইভ পোর্টাল বুকিং', 60, canvasH - 35);
 
     ctx.textAlign = 'right';
     ctx.fillText('Confidential Client Presentation Document', canvasW - 60, canvasH - 35);
@@ -791,7 +791,7 @@ export async function exportPresentationToPDF(
   }
 
   // Save the Final PDF File
-  const fileName = `Rittika_Presentation_${new Date().toISOString().split('T')[0]}.pdf`;
+  const fileName = `Rittika_Event_Presentation_${new Date().toISOString().split('T')[0]}.pdf`;
   doc.save(fileName);
 }
 
@@ -802,15 +802,15 @@ export async function exportPresentationToPDF(
 export function exportStandaloneHTMLSlideshow(
   items: GalleryMediaItem[],
   selectedCategories: string[] = [],
-  companyName: string = 'রিত্তিকা ডেকোরেশন ও ইভেন্ট ম্যানেজমেন্ট'
+  companyName: string = 'রিত্তিকা ইভেন্ট ম্যানেজমেন্ট'
 ) {
   if (!items || items.length === 0) {
-    alert('কোনো ছবি বা ডেকোরেশন আইটেম পাওয়া যায়নি।');
+    alert('কোনো ছবি বা ইভেন্ট আইটেম পাওয়া যায়নি।');
     return;
   }
 
   const itemsJson = JSON.stringify(items);
-  const categoriesText = selectedCategories.length > 0 ? selectedCategories.join(', ') : 'সকল ডেকোরেশন';
+  const categoriesText = selectedCategories.length > 0 ? selectedCategories.join(', ') : 'সকল কাজ';
 
   const htmlContent = `<!DOCTYPE html>
 <html lang="bn">

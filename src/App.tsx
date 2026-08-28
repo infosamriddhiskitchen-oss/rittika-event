@@ -28,6 +28,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Eye,
+  EyeOff,
+  Maximize2,
+  Minimize2,
   Share2,
   MessageCircle,
   ExternalLink,
@@ -101,6 +104,8 @@ import ConfirmDeleteModal from './components/ConfirmDeleteModal';
 import AuthModal from './components/AuthModal';
 import UserManager from './components/UserManager';
 import ShareModal from './components/ShareModal';
+import CategoryDropdownMenu from './components/CategoryDropdownMenu';
+import SmartFloatingSocialBar from './components/SmartFloatingSocialBar';
 
 const DEFAULT_APPROVED_USERS: UserProfile[] = [
   {
@@ -1048,7 +1053,7 @@ export default function App() {
     showToast(`কোটেশনটি সফলভাবে লাইভ ইভেন্টে রূপান্তরিত হয়েছে!`);
   };
 
-  // 💾 Export All ERP Database to JSON File
+  // 💾 Export All Database to JSON File
   const handleExportData = () => {
     const fullBackup = {
       version: '3.0',
@@ -1082,14 +1087,14 @@ export default function App() {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(fullBackup, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `Rittika_ERP_Backup_${new Date().toISOString().slice(0, 10)}.json`);
+    downloadAnchor.setAttribute("download", `Rittika_Event_Management_Backup_${new Date().toISOString().slice(0, 10)}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
     showToast('ব্যাকআপ ফাইল সফলভাবে ডাউনলোড হয়েছে!');
   };
 
-  // 💾 Import JSON file into ERP State
+  // 💾 Import JSON file into System State
   const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileReader = new FileReader();
     const files = e.target.files;
@@ -1128,7 +1133,7 @@ export default function App() {
           }
           showToast('ব্যাকআপ ফাইল সফলভাবে রিস্টোর হয়েছে!');
         } else {
-          alert('ভুল ফাইল ফরম্যাট! দয়া করে সঠিক DekoERP ব্যাকআপ ফাইল দিন।');
+          alert('ভুল ফাইল ফরম্যাট! দয়া করে সঠিক রিত্তিকা ইভেন্ট ম্যানেজমেন্ট ব্যাকআপ ফাইল দিন।');
         }
       } catch (err) {
         alert('ফাইলটি পড়তে সমস্যা হচ্ছে। ফাইলটি যাচাই করুন।');
@@ -1192,6 +1197,49 @@ export default function App() {
     { id: 'users', label: 'ইউজার ও রোল এক্সেস', icon: ShieldCheck, color: 'text-yellow-600 font-bold', minRole: 'Admin' }
   ];
 
+  const [isScrolledDown, setIsScrolledDown] = useState(false);
+  const [isImmersiveFullView, setIsImmersiveFullView] = useState(false);
+
+  // 🌟 Auto-detect scroll direction for Smart Header Mini-Dock & Social Bar Inverse Behavior
+  useEffect(() => {
+    let lastY = 0;
+    let ticking = false;
+
+    const handleScroll = (currentY: number) => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          if (currentY > 80 && currentY > lastY) {
+            setIsScrolledDown(true);
+          } else if (currentY < lastY - 10 || currentY < 40) {
+            setIsScrolledDown(false);
+          }
+          lastY = currentY;
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    const onWinScroll = () => handleScroll(window.scrollY || document.documentElement.scrollTop);
+    window.addEventListener('scroll', onWinScroll, { passive: true });
+
+    const mainContainer = document.getElementById('main-view-container');
+    const onContainerScroll = () => {
+      if (mainContainer) handleScroll(mainContainer.scrollTop);
+    };
+
+    if (mainContainer) {
+      mainContainer.addEventListener('scroll', onContainerScroll, { passive: true });
+    }
+
+    return () => {
+      window.removeEventListener('scroll', onWinScroll);
+      if (mainContainer) {
+        mainContainer.removeEventListener('scroll', onContainerScroll);
+      }
+    };
+  }, []);
+
   const canAccessTab = (tabId: string) => {
     if (tabId === 'portal') return true;
     if (!currentUser || !currentUser.isApproved) return false;
@@ -1224,43 +1272,78 @@ export default function App() {
         </div>
       )}
 
-      {/* 🌟 Top Header & Auth Navigation (Luxury Royal Velvet & Multi-Gradient) */}
-      <header className="bg-gradient-to-r from-slate-950 via-purple-950 to-slate-900 border-b border-amber-400/20 px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row items-center justify-between sticky top-0 z-40 no-print gap-3 shadow-lg shadow-purple-950/20 text-white backdrop-blur-md" id="header-bar">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 via-rose-500 to-purple-600 p-0.5 shadow-md flex items-center justify-center text-white">
+      {/* 🌟 Top Header & Auth Navigation with Smart Scroll Mini-Dock & Immersive View */}
+      <header 
+        className={`bg-gradient-to-r from-slate-950 via-purple-950 to-slate-900 border-b border-amber-400/20 sticky top-0 z-40 no-print shadow-lg shadow-purple-950/20 text-white backdrop-blur-md transition-all duration-300 ease-out ${
+          isImmersiveFullView 
+            ? '-translate-y-full opacity-0 pointer-events-none' 
+            : isScrolledDown 
+              ? 'py-1.5 px-3 sm:px-5 flex flex-row items-center justify-between gap-2 shadow-2xl bg-slate-950/95 border-amber-400/30' 
+              : 'px-4 sm:px-6 py-3 sm:py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3'
+        }`} 
+        id="header-bar"
+      >
+        {/* Brand / Logo Area (Expands or Contracts based on scroll) */}
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          <div className={`rounded-xl bg-gradient-to-br from-amber-400 via-rose-500 to-purple-600 p-0.5 shadow-md flex items-center justify-center text-white transition-all ${
+            isScrolledDown ? 'w-8 h-8' : 'w-10 h-10'
+          }`}>
             <div className="w-full h-full bg-slate-950/40 rounded-[10px] flex items-center justify-center">
-              <Sparkles size={20} className="text-amber-300 animate-pulse" />
+              <Sparkles size={isScrolledDown ? 15 : 20} className="text-amber-300 animate-pulse" />
             </div>
           </div>
           <div>
-            <h1 className="text-lg sm:text-xl font-black tracking-tight uppercase text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-rose-200 to-purple-200 leading-none">
+            <h1 className={`font-black tracking-tight uppercase text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-rose-200 to-purple-200 leading-none transition-all ${
+              isScrolledDown ? 'text-sm sm:text-base' : 'text-lg sm:text-xl'
+            }`}>
               রিত্তিকা ইভেন্ট ম্যানেজমেন্ট
             </h1>
-            <p className="text-[10px] text-amber-200/80 font-bold tracking-widest uppercase mt-0.5 flex items-center gap-1.5">
-              <span>Rittika Event & Royal Decor ERP</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-ping"></span>
-            </p>
+            {!isScrolledDown && (
+              <p className="text-[10px] text-amber-200/80 font-bold tracking-widest uppercase mt-0.5 flex items-center gap-1.5">
+                <span>Rittika Event Management</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-ping"></span>
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Sync, Backup & Auth panel inside header */}
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        {/* Action Controls & Fast Navigation */}
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
           
+          {/* 🌟 Category Dropdown Mega Menu for Fast Navigation */}
+          <CategoryDropdownMenu
+            activeTab={activeTab}
+            onSelectTab={(tabId) => setActiveTab(tabId)}
+            currentUser={currentUser}
+            canAccessTab={canAccessTab}
+          />
+
+          {/* 🌟 Clean Full Screen / Immersive View Toggle */}
+          <button
+            type="button"
+            onClick={() => setIsImmersiveFullView(true)}
+            title="ক্লিন ফুল ভিউ (হেডার ও মেনু সাময়িক হাইড করুন)"
+            className="p-1.5 sm:px-2.5 sm:py-1.5 text-xs rounded-xl font-bold flex items-center gap-1 bg-white/10 hover:bg-white/20 text-amber-200 border border-white/20 transition cursor-pointer active:scale-95"
+          >
+            <Maximize2 size={14} className="stroke-[2.5]" />
+            <span className="hidden lg:inline text-[11px]">ফুল ভিউ</span>
+          </button>
+
           {/* 🌟 1-Click Share Website & Portal Button */}
           <button
             onClick={() => setIsShareModalOpen(true)}
             title="ওয়েবসাইট লিংক, কিউআর কোড বা হোয়াটসঅ্যাপে যে কাউকে পাঠান"
-            className="px-3.5 py-1.5 text-xs rounded-xl font-black uppercase flex items-center gap-1.5 bg-gradient-to-r from-amber-400 via-rose-500 to-purple-600 text-white shadow-md hover:shadow-lg transition cursor-pointer active:scale-95 border border-white/20"
+            className="px-2.5 sm:px-3.5 py-1.5 text-xs rounded-xl font-black uppercase flex items-center gap-1 bg-gradient-to-r from-amber-400 via-rose-500 to-purple-600 text-white shadow-md hover:shadow-lg transition cursor-pointer active:scale-95 border border-white/20"
           >
-            <Share2 size={14} className="stroke-[2.5]" />
-            <span>শেয়ার করুন</span>
+            <Share2 size={13} className="stroke-[2.5]" />
+            <span className={isScrolledDown ? 'hidden md:inline text-[11px]' : 'text-[11px]'}>শেয়ার</span>
           </button>
 
           {/* User Profile / Status Badge */}
           {currentUser ? (
-            <div className="flex items-center gap-2 border border-white/15 bg-white/10 backdrop-blur-md rounded-xl p-1 px-2.5 text-xs shadow-inner">
-              <div className="flex items-center gap-1.5">
-                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs ${
+            <div className="flex items-center gap-1.5 sm:gap-2 border border-white/15 bg-white/10 backdrop-blur-md rounded-xl p-1 px-2 text-xs shadow-inner">
+              <div className="flex items-center gap-1">
+                <span className={`text-[9px] sm:text-[10px] font-black px-1.5 sm:px-2 py-0.5 rounded-full shadow-xs ${
                   currentUser.role === 'Admin' ? 'bg-gradient-to-r from-rose-500 to-pink-600 text-white' :
                   currentUser.role === 'Manager' ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white' :
                   currentUser.role === 'Staff' ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white' :
@@ -1270,7 +1353,7 @@ export default function App() {
                    currentUser.role === 'Manager' ? '👔 ম্যানেজার' :
                    currentUser.role === 'Staff' ? '🛠️ স্টাফ' : '👁️ ভিউয়ার'}
                 </span>
-                <span className="font-bold text-amber-100 hidden sm:inline max-w-[130px] truncate" title={currentUser.email}>
+                <span className="font-bold text-amber-100 hidden sm:inline max-w-[100px] md:max-w-[130px] truncate text-[11px]" title={currentUser.email}>
                   {currentUser.name}
                 </span>
               </div>
@@ -1280,21 +1363,21 @@ export default function App() {
                 title="লগআউট করুন"
                 className="p-1 hover:bg-rose-500/20 text-rose-300 rounded-lg transition cursor-pointer"
               >
-                <LogOut size={14} className="stroke-[2.5]" />
+                <LogOut size={13} className="stroke-[2.5]" />
               </button>
             </div>
           ) : (
             <button
               onClick={() => setIsAuthModalOpen(true)}
-              className="neo-btn neo-btn-primary px-3.5 py-1.5 text-xs font-black uppercase flex items-center gap-1.5 shadow-md cursor-pointer"
+              className="neo-btn neo-btn-primary px-2.5 sm:px-3.5 py-1.5 text-xs font-black uppercase flex items-center gap-1 shadow-md cursor-pointer"
             >
-              <LogIn size={14} className="stroke-[2.5]" />
-              <span>লগইন করুন (Staff/Admin)</span>
+              <LogIn size={13} className="stroke-[2.5]" />
+              <span className="text-[11px]">লগইন</span>
             </button>
           )}
 
           {/* User Access Manager Quick Button for Super Admin */}
-          {isSuperAdmin && (
+          {isSuperAdmin && !isScrolledDown && (
             <button
               onClick={() => setActiveTab('users')}
               title="ইউজার অনুমোদন ও রোল ম্যানেজমেন্ট"
@@ -1305,12 +1388,12 @@ export default function App() {
               }`}
             >
               <ShieldCheck size={14} className="stroke-[2.5]" />
-              <span className="hidden md:inline">রোল কন্ট্রোল</span>
+              <span className="hidden md:inline text-[11px]">রোল কন্ট্রোল</span>
             </button>
           )}
 
-          {/* Export / Import (Only for Manager / Admin) */}
-          {isApprovedStaffOrAdmin && (
+          {/* Export / Import (Only for Manager / Admin when not mini) */}
+          {isApprovedStaffOrAdmin && !isScrolledDown && (
             <>
               <button 
                 id="export-data-btn"
@@ -1318,8 +1401,8 @@ export default function App() {
                 title="ডাটা এক্সপোর্ট / ব্যাকআপ ফাইল ডাউনলোড করুন"
                 className="px-2.5 py-1.5 text-xs rounded-xl font-bold flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white border border-white/20 transition cursor-pointer"
               >
-                <Download size={14} className="stroke-[2.5]" />
-                <span className="hidden lg:inline">ব্যাকআপ এক্সপোর্ট</span>
+                <Download size={13} className="stroke-[2.5]" />
+                <span className="hidden lg:inline text-[11px]">ব্যাকআপ</span>
               </button>
 
               {isSuperAdmin && (
@@ -1327,8 +1410,8 @@ export default function App() {
                   title="আগের ব্যাকআপ ফাইল রিস্টোর করুন"
                   className="px-2.5 py-1.5 text-xs rounded-xl font-bold flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white border border-white/20 transition cursor-pointer"
                 >
-                  <Upload size={14} className="stroke-[2.5]" />
-                  <span className="hidden lg:inline">রিস্টোর ইম্পোর্ট</span>
+                  <Upload size={13} className="stroke-[2.5]" />
+                  <span className="hidden lg:inline text-[11px]">রিস্টোর</span>
                   <input 
                     id="import-data-file"
                     type="file" 
@@ -1344,74 +1427,26 @@ export default function App() {
         </div>
       </header>
 
-      {/* 🌟 Main Body Layout: Responsive Navigation Drawer & View Screen */}
-      <div className="flex-1 flex flex-col md:flex-row min-h-0" id="workspace-layout">
+      {/* 🌟 Floating Exit Pill When Immersive Full View Is Enabled */}
+      {isImmersiveFullView && (
+        <div className="fixed top-3 right-3 z-50 animate-fadeIn no-print">
+          <button
+            type="button"
+            onClick={() => setIsImmersiveFullView(false)}
+            title="ফুল ভিউ বন্ধ করে সাধারণ মেনু ফিরিয়ে আনুন"
+            className="flex items-center gap-1.5 bg-slate-950/90 hover:bg-slate-900 text-amber-300 border border-amber-400/40 px-3.5 py-1.5 rounded-full shadow-2xl backdrop-blur-md text-xs font-black transition-all hover:scale-105 cursor-pointer"
+          >
+            <Minimize2 size={13} />
+            <span>সাধারণ ভিউ</span>
+          </button>
+        </div>
+      )}
+
+      {/* 🌟 Main Workspace Screen (Full Width & Pristine Layout) */}
+      <div className="flex-1 flex flex-col min-h-0 relative" id="workspace-layout">
         
-        {/* Navigation Sidebar Drawer with Soft Glass Styling */}
-        <aside className="w-full md:w-72 bg-white/90 backdrop-blur-md md:border-r border-b md:border-b-0 border-slate-200/80 p-4 flex flex-col justify-between shrink-0 no-print shadow-xs" id="navigation-sidebar">
-          <div className="space-y-3">
-            
-            {/* Quick Switch for Guests to Login */}
-            {!isApprovedStaffOrAdmin && (
-              <div className="p-3 bg-gradient-to-r from-amber-500/10 via-rose-500/10 to-purple-500/10 border border-amber-300/40 rounded-xl mb-3">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <Lock size={14} className="text-amber-700" />
-                  <span className="text-[11px] font-black text-slate-800 uppercase">পাবলিক ভিউয়ার মোড</span>
-                </div>
-                <p className="text-[10px] text-slate-600 font-bold mb-2">
-                  ব্যবসায়িক হিসাব, স্টক ও ইনভয়েস দেখতে অ্যাডমিন বা স্টাফ অ্যাকাউন্টে লগইন করুন।
-                </p>
-                <button
-                  onClick={() => setIsAuthModalOpen(true)}
-                  className="w-full py-1.5 bg-gradient-to-r from-amber-500 via-rose-500 to-purple-600 text-white rounded-lg font-black text-[11px] uppercase flex items-center justify-center gap-1 shadow-md hover:shadow-lg transition cursor-pointer"
-                >
-                  <LogIn size={12} />
-                  স্টাফ / অ্যাডমিন লগইন
-                </button>
-              </div>
-            )}
-
-            <nav className="space-y-1 max-h-[calc(100vh-210px)] overflow-y-auto pr-1" id="navigation-menu">
-              {filteredNavItems.map(item => {
-                const Icon = item.icon;
-                const isActive = activeTab === item.id;
-
-                return (
-                  <button
-                    id={`nav-tab-${item.id}`}
-                    key={item.id}
-                    onClick={() => setActiveTab(item.id)}
-                    className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl transition-all text-xs font-black cursor-pointer ${
-                      isActive 
-                        ? 'bg-gradient-to-r from-purple-700 via-rose-600 to-amber-500 text-white shadow-md shadow-purple-900/20 scale-[1.02]' 
-                        : 'text-slate-700 hover:bg-gradient-to-r hover:from-purple-50 hover:to-rose-50 hover:text-purple-950'
-                    }`}
-                  >
-                    <Icon size={16} className={`${isActive ? 'text-amber-200' : item.color}`} />
-                    <span className="truncate">{item.label}</span>
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-
-          <div className="border-t border-slate-200 pt-3 mt-4 text-center flex flex-col items-center gap-1.5" id="sidebar-footer">
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">রিত্তিকা ইভেন্ট ডেকোরেশন ERP v3.0</p>
-            {isSuperAdmin && (
-              <button
-                id="reset-all-data-sidebar-btn"
-                onClick={handleResetToSeeded}
-                className="w-full mt-1 py-1.5 px-2 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-black uppercase tracking-wider rounded-lg shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <Trash2 size={11} className="stroke-[2.5]" />
-                <span>সমস্ত ডাটা মুছুন</span>
-              </button>
-            )}
-          </div>
-        </aside>
-
         {/* Active Content Window Screen */}
-        <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto min-h-0" id="main-view-container">
+        <main className="flex-1 p-3 sm:p-5 md:p-6 lg:p-8 overflow-y-auto min-h-0" id="main-view-container">
           
           {/* Guest restricted view notice if attempting unapproved tab */}
           {!canAccessTab(activeTab) && (
@@ -1703,47 +1738,15 @@ export default function App() {
               onAddUser={handleAddApprovedUser}
               onUpdateUser={handleUpdateUser}
               onDeleteUser={handleDeleteUser}
+              onResetAllData={handleResetToSeeded}
             />
           )}
         </main>
 
       </div>
 
-      {/* 🌟 Floating 1-Click WhatsApp & Facebook Quick Action Widget (Always Accessible) */}
-      <div className="fixed bottom-5 right-5 z-40 flex flex-col gap-2.5 items-end no-print" id="floating-social-contact-bar">
-        {/* 1-Click WhatsApp Floating Pill */}
-        <a
-          href="https://wa.me/8801721779396?text=%E0%A6%A8%E0%A6%AE%E0%A6%B8%E0%A7%8D%E0%A6%95%E0%A6%BE%E0%A6%B0%2F%E0%A6%B9%E0%A7%8D%E0%A6%AF%E0%A6%BE%E0%A6%B2%E0%A7%8B%2C%20%E0%A6%B0%E0%A6%BF%E0%A6%A4%E0%A7%8D%E0%A6%A4%E0%A6%BF%E0%A6%95%E0%A6%BE%20%E0%A6%87%E0%A6%AD%E0%A7%87%E0%A6%A8%E0%A7%8D%E0%A6%9F%20%E0%A6%AE%E0%A7%8D%E0%A6%AF%E0%A6%BE%E0%A6%A8%E0%A7%87%E0%A6%9C%E0%A6%AE%E0%A7%87%E0%A6%A8%E0%A7%8D%E0%A6%9F%20%E0%A6%A5%E0%A7%87%E0%A6%95%E0%A7%87%20%E0%A6%87%E0%A6%AD%E0%A7%87%E0%A6%A8%E0%A7%8D%E0%A6%9F%20%E0%A6%A1%E0%A7%87%E0%A6%95%E0%A7%8B%E0%A6%B0%E0%A7%87%E0%A6%B6%E0%A6%A8%20%E0%A6%93%20%E0%A6%AC%E0%A7%81%E0%A6%95%E0%A6%BF%E0%A6%82%20%E0%A6%B8%E0%A6%82%E0%A6%95%E0%A7%8D%E0%A6%B0%E0%A6%BE%E0%A6%A8%E0%A7%8D%E0%A6%A4%20%E0%A6%A4%E0%A6%A5%E0%A7%8D%E0%A6%AF%20%E0%A6%9C%E0%A6%BE%E0%A6%A8%E0%A6%A4%E0%A7%87%20%E0%A6%9A%E0%A6%BE%E0%A6%87%E0%A7%A4"
-          target="_blank"
-          rel="noopener noreferrer"
-          title="হোয়াটসঅ্যাপে মেসেজ পাঠান (01721779396)"
-          className="group flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white p-2.5 sm:px-4 sm:py-2.5 rounded-full shadow-xl shadow-emerald-950/30 border border-emerald-300/40 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
-        >
-          <div className="w-6 h-6 rounded-full bg-white text-emerald-600 flex items-center justify-center font-bold shrink-0 shadow-xs">
-            <MessageCircle size={15} className="fill-emerald-600 text-white" />
-          </div>
-          <span className="hidden sm:inline font-black text-xs uppercase tracking-tight">
-            WhatsApp: +880 1721-779396
-          </span>
-        </a>
-
-        {/* 1-Click Facebook Page Floating Pill */}
-        <a
-          href="https://www.facebook.com/VRelegantshop"
-          target="_blank"
-          rel="noopener noreferrer"
-          title="ফেসবুক পেজ ভিজিট করুন (facebook.com/VRelegantshop)"
-          className="group flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white p-2.5 sm:px-4 sm:py-2.5 rounded-full shadow-xl shadow-blue-950/30 border border-blue-300/40 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
-        >
-          <div className="w-6 h-6 rounded-full bg-white text-blue-600 flex items-center justify-center font-black shrink-0 shadow-xs text-xs font-sans">
-            f
-          </div>
-          <span className="hidden sm:inline font-black text-xs uppercase tracking-tight flex items-center gap-1">
-            Facebook Page
-            <ExternalLink size={12} />
-          </span>
-        </a>
-      </div>
+      {/* 🌟 Smart Scroll Inverse Floating Social Bar (WhatsApp & Facebook - Hides on scroll up, shows on scroll down) */}
+      <SmartFloatingSocialBar isImmersiveFullView={isImmersiveFullView} />
 
       {/* 🗑️ Reliable Global Delete Modal */}
       {pendingDelete && (

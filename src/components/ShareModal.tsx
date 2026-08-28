@@ -68,13 +68,13 @@ export default function ShareModal({
 
   // WhatsApp share url
   const shareTitle = selectedTarget === 'booking' 
-    ? '🌸 রিত্তিকা ডেকোরেশন - অনলাইন ইভেন্ট বুকিং ও শিডিউল রিকোয়েস্ট' 
-    : '✨ রিত্তিকা ডেকোরেশন ও ইভেন্ট ম্যানেজমেন্ট - লাইভ শোকেস ও পোর্টফোলিও';
+    ? '🌸 রিত্তিকা ইভেন্ট ম্যানেজমেন্ট - অনলাইন ইভেন্ট বুকিং ও শিডিউল রিকোয়েস্ট' 
+    : '✨ রিত্তিকা ইভেন্ট ম্যানেজমেন্ট - লাইভ শোকেস ও পোর্টফোলিও';
   
   const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(`${shareTitle}\n👉 ${currentUrl}`)}`;
   const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(currentUrl)}`;
   const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(currentUrl)}&text=${encodeURIComponent(shareTitle)}`;
-  const emailUrl = `mailto:?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(`আসসালামু আলাইকুম,\n\nরিত্তিকা ডেকোরেশন ও ইভেন্ট ম্যানেজমেন্টের লাইভ পোর্টাল ও পোর্টফোলিও দেখতে নিচের লিংকে প্রবেশ করুন:\n${currentUrl}\n\nধন্যবাদ!`)}`;
+  const emailUrl = `mailto:?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(`আসসালামু আলাইকুম,\n\nরিত্তিকা ইভেন্ট ম্যানেজমেন্টের লাইভ পোর্টাল ও পোর্টফোলিও দেখতে নিচের লিংকে প্রবেশ করুন:\n${currentUrl}\n\nধন্যবাদ!`)}`;
 
   // Quick SVG QR Code Generator (Lightweight QR Generator Matrix)
   const renderQRCodeSVG = (text: string) => {
@@ -231,7 +231,7 @@ export default function ShareModal({
               }`}
             >
               <LayoutDashboard size={16} className={selectedTarget === 'dashboard' ? 'text-indigo-500' : 'text-slate-400'} />
-              <span>ইআরপি ড্যাশবোর্ড</span>
+              <span>ইভেন্ট ড্যাশবোর্ড</span>
             </button>
           </div>
         </div>
@@ -386,7 +386,7 @@ export default function ShareModal({
                 স্মার্টফোনের ক্যামেরা দিয়ে স্ক্যান করুন
               </p>
               <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                কাস্টমার বা ভিজিটর তাৎক্ষণিকভাবে আপনার ডেকোরেশন শোকেস দেখতে পারবেন
+                কাস্টমার বা ভিজিটর তাৎক্ষণিকভাবে আপনার ইভেন্ট শোকেস ও পোর্টফোলিও দেখতে পারবেন
               </p>
             </div>
             <button
@@ -429,7 +429,7 @@ export default function ShareModal({
 
         {/* Footer Note */}
         <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
-          <span>✨ রিত্তিকা ডেকোরেশন ও ইভেন্ট ম্যানেজমেন্ট</span>
+          <span>✨ রিত্তিকা ইভেন্ট ম্যানেজমেন্ট</span>
           <span className="text-purple-600 font-bold">সকল ডিভাইসে অপ্টিমাইজড</span>
         </div>
 

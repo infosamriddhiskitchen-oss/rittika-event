@@ -26,6 +26,7 @@ interface UserManagerProps {
   onAddUser: (user: Omit<UserProfile, 'id'>) => void;
   onUpdateUser: (id: string, updated: Partial<UserProfile>) => void;
   onDeleteUser: (id: string) => void;
+  onResetAllData?: () => void;
 }
 
 export default function UserManager({
@@ -33,11 +34,16 @@ export default function UserManager({
   approvedUsers,
   onAddUser,
   onUpdateUser,
-  onDeleteUser
+  onDeleteUser,
+  onResetAllData
 }: UserManagerProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<string>('all');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  // High security danger zone states
+  const [isDangerZoneUnlocked, setIsDangerZoneUnlocked] = useState(false);
+  const [dangerConfirmText, setDangerConfirmText] = useState('');
 
   // Form states
   const [newName, setNewName] = useState('');
@@ -405,6 +411,82 @@ export default function UserManager({
           );
         })}
       </div>
+
+      {/* 🛑 Super Admin High-Security Danger Zone (Protected System Reset) */}
+      {isSuperAdmin && onResetAllData && (
+        <div className="mt-10 pt-6 border-t-4 border-black" id="superadmin-danger-zone">
+          <div className="bg-gradient-to-r from-red-50 to-rose-100 border-4 border-red-600 p-5 shadow-[6px_6px_0px_0px_rgba(220,38,38,1)]">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 bg-red-600 text-white flex items-center justify-center shrink-0 border-2 border-black">
+                  <ShieldAlert size={22} className="stroke-[2.5]" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black uppercase text-red-950 flex items-center gap-2">
+                    উন্নত সিস্টেম সেটিংস ও ডাটাবেস রিসেট (Super Admin Only)
+                  </h4>
+                  <p className="text-xs text-red-900 font-bold mt-0.5">
+                    সিস্টেমের সমস্ত তথ্য, স্টক, ইনভয়েস ও ট্রানজাকশন মুছে সম্পূর্ণ প্রাথমিক অবস্থায় রিসেট করুন।
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDangerZoneUnlocked(!isDangerZoneUnlocked);
+                  setDangerConfirmText('');
+                }}
+                className={`px-4 py-2 border-2 border-black text-xs font-black uppercase tracking-wider transition cursor-pointer shadow-[2px_2px_0px_0px_#000000] ${
+                  isDangerZoneUnlocked 
+                    ? 'bg-slate-900 text-white hover:bg-slate-800' 
+                    : 'bg-red-600 hover:bg-red-700 text-white'
+                }`}
+              >
+                {isDangerZoneUnlocked ? 'লক করুন / বন্ধ করুন' : 'নিরাপত্তা লক আনলক করুন'}
+              </button>
+            </div>
+
+            {/* Unlocked Protected Confirmation Form */}
+            {isDangerZoneUnlocked && (
+              <div className="mt-5 pt-4 border-t-2 border-red-300 space-y-4 animate-fadeIn">
+                <div className="p-3 bg-red-100/80 border-2 border-red-400 text-red-900 text-xs font-bold space-y-1">
+                  <p className="font-black flex items-center gap-1.5 text-red-950">
+                    <Lock size={14} />
+                    সতর্কতা: এই অ্যাকশনটি অপরিবর্তনীয়!
+                  </p>
+                  <p>
+                    সমস্ত স্টক আইটেম, বিক্রয় ও ভাড়ার হিসাব, কাস্টমার লেজার, খরচ এবং ইনভয়েস স্থায়ীভাবে মুছে যাবে। অ্যাকশনটি নিশ্চিত করতে নিচের ইনপুট বক্সে হুবহু <strong>DELETE ALL</strong> অথবা <strong>সব মুছুন</strong> লিখুন।
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <input
+                    type="text"
+                    placeholder='নিশ্চিত করতে "DELETE ALL" বা "সব মুছুন" লিখুন'
+                    value={dangerConfirmText}
+                    onChange={(e) => setDangerConfirmText(e.target.value)}
+                    className="flex-1 px-3 py-2.5 bg-white border-2 border-black font-black text-xs placeholder:text-slate-400 uppercase tracking-wider"
+                  />
+                  <button
+                    type="button"
+                    disabled={dangerConfirmText.trim().toUpperCase() !== 'DELETE ALL' && dangerConfirmText.trim() !== 'সব মুছুন'}
+                    onClick={() => {
+                      onResetAllData();
+                      setIsDangerZoneUnlocked(false);
+                      setDangerConfirmText('');
+                    }}
+                    className="px-5 py-2.5 bg-red-600 text-white border-2 border-black font-black uppercase text-xs tracking-wider shadow-[3px_3px_0px_0px_#000000] hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <Trash2 size={14} className="stroke-[2.5]" />
+                    <span>সমস্ত ডাটা মুছে ফেলুন</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Add / Edit User Modal */}
       {isAddModalOpen && (

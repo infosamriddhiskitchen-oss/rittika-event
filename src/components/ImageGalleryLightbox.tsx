@@ -46,6 +46,7 @@ export interface GalleryMediaItem {
   title: string;
   category?: string;
   url: string;
+  images?: string[]; // Multiple photos array
   date?: string;
   eventName?: string;
   customerName?: string;
@@ -100,6 +101,9 @@ export default function ImageGalleryLightbox({
   const [videoStatus, setVideoStatus] = useState('');
   const [videoSlideDuration, setVideoSlideDuration] = useState(4); // 4s per slide for video export
 
+  // Sub-photo index for multi-image portfolio item
+  const [subPhotoIndex, setSubPhotoIndex] = useState(0);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef<number | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -109,11 +113,16 @@ export default function ImageGalleryLightbox({
     if (isOpen) {
       const validIndex = Math.min(Math.max(0, initialIndex), Math.max(0, items.length - 1));
       setCurrentIndex(validIndex);
+      setSubPhotoIndex(0);
       resetView();
       setIsPlayingSlideshow(false);
       setShowSettings(false);
     }
   }, [isOpen, initialIndex, items.length]);
+
+  useEffect(() => {
+    setSubPhotoIndex(0);
+  }, [currentIndex]);
 
   const resetView = () => {
     setZoomLevel(1);
@@ -373,7 +382,7 @@ export default function ImageGalleryLightbox({
       await exportPresentationToVideo(items, {
         secondsPerSlide: durationSec,
         transitionEffect: transitionEffect,
-        companyName: 'রিত্তিকা ডেকোরেশন ও ইভেন্ট ম্যানেজমেন্ট',
+        companyName: 'রিত্তিকা ইভেন্ট ম্যানেজমেন্ট',
         onProgress: (percent, statusText) => {
           setVideoProgress(percent);
           setVideoStatus(statusText);
@@ -712,45 +721,81 @@ export default function ImageGalleryLightbox({
         )}
 
         {/* Center Display Image / Video */}
-        <div 
-          className={`relative max-w-6xl max-h-[76vh] flex items-center justify-center select-none ${
-            zoomLevel > 1 ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'
-          }`}
-          onMouseDown={handleMouseDown}
-          onDoubleClick={() => (zoomLevel > 1 ? resetView() : handleZoomIn())}
-        >
-          {currentItem.isVideo || currentItem.url.startsWith('data:video') ? (
-            <video
-              src={currentItem.url}
-              controls
-              autoPlay
-              className="max-h-[72vh] max-w-full rounded shadow-2xl object-contain border-2 border-white/20"
-            />
-          ) : (
-            <img
-              key={currentItem.id || currentIndex}
-              src={currentItem.url}
-              alt={currentItem.title}
-              style={getTransitionStyle()}
-              className={`max-h-[72vh] max-w-full rounded shadow-[0_20px_50px_rgba(0,0,0,0.8)] object-contain border-2 border-white/20 ${getTransitionClass()}`}
-              draggable={false}
-            />
-          )}
+        {(() => {
+          const itemPhotos = currentItem.images && currentItem.images.length > 0 ? currentItem.images : [currentItem.url];
+          const activePhotoUrl = itemPhotos[subPhotoIndex] || currentItem.url;
+          return (
+            <div 
+              className={`relative max-w-6xl max-h-[76vh] flex flex-col items-center justify-center select-none ${
+                zoomLevel > 1 ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'
+              }`}
+              onMouseDown={handleMouseDown}
+              onDoubleClick={() => (zoomLevel > 1 ? resetView() : handleZoomIn())}
+            >
+              {currentItem.isVideo || activePhotoUrl.startsWith('data:video') ? (
+                <video
+                  src={activePhotoUrl}
+                  controls
+                  autoPlay
+                  className="max-h-[72vh] max-w-full rounded shadow-2xl object-contain border-2 border-white/20"
+                />
+              ) : (
+                <img
+                  key={`${currentItem.id || currentIndex}-${subPhotoIndex}`}
+                  src={activePhotoUrl}
+                  alt={currentItem.title}
+                  style={getTransitionStyle()}
+                  className={`max-h-[72vh] max-w-full rounded shadow-[0_20px_50px_rgba(0,0,0,0.8)] object-contain border-2 border-white/20 ${getTransitionClass()}`}
+                  draggable={false}
+                />
+              )}
 
-          {/* Zoom & Pan Hint Badge on Image */}
-          {zoomLevel > 1 && (
-            <div className="absolute top-3 right-3 bg-black/80 text-yellow-400 text-[10px] font-black px-2.5 py-1 rounded-full border border-yellow-400/50 shadow-md pointer-events-none flex items-center gap-1.5 animate-pulse">
-              <Move size={12} /> মাউস বা আঙুল দিয়ে ড্র্যাগ করে সব অংশ দেখুন
-            </div>
-          )}
+              {/* Sub-Photos Multi-Angle Pill Selector (if project has multiple photos) */}
+              {itemPhotos.length > 1 && (
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/85 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/30 flex items-center gap-2 shadow-2xl z-20">
+                  <span className="text-[10px] font-black text-amber-300 uppercase tracking-wider flex items-center gap-1">
+                    <Sparkles size={11} /> এঙ্গেল ({toBengaliNumber(subPhotoIndex + 1)}/{toBengaliNumber(itemPhotos.length)}):
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {itemPhotos.map((pUrl, pIdx) => (
+                      <button
+                        key={pIdx}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSubPhotoIndex(pIdx);
+                          resetView();
+                        }}
+                        className={`w-6 h-6 rounded-full overflow-hidden border-2 transition cursor-pointer ${
+                          subPhotoIndex === pIdx 
+                            ? 'border-yellow-400 scale-110 ring-2 ring-yellow-400/50' 
+                            : 'border-white/40 opacity-70 hover:opacity-100'
+                        }`}
+                        title={`এঙ্গেল / ছবি ${toBengaliNumber(pIdx + 1)}`}
+                      >
+                        <img src={pUrl} alt={`Angle ${pIdx + 1}`} className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          {/* Active Auto-Play Speed Indicator Tag */}
-          {isPlayingSlideshow && (
-            <div className="absolute top-3 left-3 bg-black/85 text-yellow-400 border border-yellow-400/40 text-[10px] font-black px-2.5 py-1 rounded-full shadow-lg pointer-events-none flex items-center gap-1.5">
-              <Clock size={11} /> স্লাইডশো গতি: {toBengaliNumber(slideshowSpeed / 1000)} সেকেন্ড
+              {/* Zoom & Pan Hint Badge on Image */}
+              {zoomLevel > 1 && (
+                <div className="absolute top-3 right-3 bg-black/80 text-yellow-400 text-[10px] font-black px-2.5 py-1 rounded-full border border-yellow-400/50 shadow-md pointer-events-none flex items-center gap-1.5 animate-pulse">
+                  <Move size={12} /> মাউস বা আঙুল দিয়ে ড্র্যাগ করে সব অংশ দেখুন
+                </div>
+              )}
+
+              {/* Active Auto-Play Speed Indicator Tag */}
+              {isPlayingSlideshow && (
+                <div className="absolute top-3 left-3 bg-black/85 text-yellow-400 border border-yellow-400/40 text-[10px] font-black px-2.5 py-1 rounded-full shadow-lg pointer-events-none flex items-center gap-1.5">
+                  <Clock size={11} /> স্লাইডশো গতি: {toBengaliNumber(slideshowSpeed / 1000)} সেকেন্ড
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          );
+        })()}
 
         {/* Next Button Arrow */}
         {items.length > 1 && (

@@ -38,7 +38,10 @@ import {
   MessageCircle,
   ExternalLink,
   Building2,
-  Globe
+  Globe,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Customer, EventEntry, RentalOutEntry, OnlineBooking, Attachment, UserRole, PortfolioItem } from '../types';
 import { toBengaliNumber, formatCurrency } from '../utils';
@@ -127,6 +130,9 @@ export default function CustomerPortal({
   const [portfolioTitle, setPortfolioTitle] = useState('');
   const [portfolioCategory, setPortfolioCategory] = useState(portfolioCategories[0] || 'বিবাহ ও সংবর্ধনা');
   const [portfolioUrl, setPortfolioUrl] = useState('');
+  const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
+  const [newImageUrlInput, setNewImageUrlInput] = useState('');
+  const [activeCardImageIdx, setActiveCardImageIdx] = useState<Record<string, number>>({});
   const [portfolioEventName, setPortfolioEventName] = useState('');
   const [portfolioCustomerName, setPortfolioCustomerName] = useState('');
   const [portfolioDate, setPortfolioDate] = useState(new Date().toISOString().split('T')[0]);
@@ -164,20 +170,26 @@ export default function CustomerPortal({
           (item.highlightTags && item.highlightTags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase())));
         return matchCategory && matchQuery;
       })
-      .map(item => ({
-        id: item.id,
-        title: item.title,
-        category: item.category,
-        url: item.url,
-        eventName: item.eventName,
-        customerName: item.customerName,
-        date: item.date,
-        description: item.description,
-        isVideo: item.isVideo,
-        estimatedCost: item.estimatedCost,
-        highlightTags: item.highlightTags,
-        colorPalette: item.colorPalette
-      }));
+      .map(item => {
+        const itemImgs = (item.images && item.images.length > 0) 
+          ? item.images 
+          : (item.url ? [item.url] : []);
+        return {
+          id: item.id,
+          title: item.title,
+          category: item.category,
+          url: item.url || itemImgs[0] || '',
+          images: itemImgs,
+          eventName: item.eventName,
+          customerName: item.customerName,
+          date: item.date,
+          description: item.description,
+          isVideo: item.isVideo,
+          estimatedCost: item.estimatedCost,
+          highlightTags: item.highlightTags,
+          colorPalette: item.colorPalette
+        };
+      });
   }, [portfolioItems, selectedCategories, searchQuery]);
 
   // Open Portfolio Modal for Add
@@ -186,6 +198,8 @@ export default function CustomerPortal({
     setPortfolioTitle('');
     setPortfolioCategory(portfolioCategories[0] || 'বিবাহ ও সংবর্ধনা');
     setPortfolioUrl('');
+    setPortfolioImages([]);
+    setNewImageUrlInput('');
     setPortfolioEventName('');
     setPortfolioCustomerName('');
     setPortfolioDate(new Date().toISOString().split('T')[0]);
@@ -202,7 +216,14 @@ export default function CustomerPortal({
     setEditingPortfolioItem(item);
     setPortfolioTitle(item.title);
     setPortfolioCategory(item.category);
-    setPortfolioUrl(item.url);
+    
+    const existingImgs = (item.images && item.images.length > 0)
+      ? item.images
+      : (item.url ? [item.url] : []);
+    
+    setPortfolioImages(existingImgs);
+    setPortfolioUrl(item.url || existingImgs[0] || '');
+    setNewImageUrlInput('');
     setPortfolioEventName(item.eventName || '');
     setPortfolioCustomerName(item.customerName || '');
     setPortfolioDate(item.date || new Date().toISOString().split('T')[0]);
@@ -213,13 +234,80 @@ export default function CustomerPortal({
     setIsPortfolioModalOpen(true);
   };
 
+  // Handle multiple photo uploads via file input
+  const handleMultipleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const fileArray: File[] = Array.from(files);
+
+    fileArray.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (reader.result && typeof reader.result === 'string') {
+          const res = reader.result;
+          setPortfolioImages(prev => {
+            const nextList = [...prev, res];
+            return nextList;
+          });
+          setPortfolioUrl(prev => prev || res);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    // Reset input value so same files can be re-selected if needed
+    e.target.value = '';
+  };
+
+  // Handle adding photo from URL or batch URLs
+  const handleAddUrlImage = () => {
+    if (!newImageUrlInput.trim()) return;
+    const urls = newImageUrlInput
+      .split(/[\n,]+/)
+      .map(u => u.trim())
+      .filter(u => u.length > 5);
+
+    if (urls.length > 0) {
+      setPortfolioImages(prev => [...prev, ...urls]);
+      if (!portfolioUrl) {
+        setPortfolioUrl(urls[0]);
+      }
+      setNewImageUrlInput('');
+    }
+  };
+
+  // Remove individual photo from uploaded list
+  const handleRemovePhoto = (indexToRemove: number) => {
+    setPortfolioImages(prev => {
+      const updated = prev.filter((_, idx) => idx !== indexToRemove);
+      // If we removed the cover image, pick the next available
+      if (portfolioUrl === prev[indexToRemove]) {
+        setPortfolioUrl(updated[0] || '');
+      }
+      return updated;
+    });
+  };
+
+  // Set photo as primary cover
+  const handleSetCoverPhoto = (imgUrl: string) => {
+    setPortfolioUrl(imgUrl);
+  };
+
   // Handle Save Portfolio Item
   const handleSavePortfolio = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!portfolioTitle.trim() || !portfolioUrl.trim()) {
-      alert('দয়া করে শিরোনাম এবং ছবির লিংক প্রদান করুন বা ফাইল আপলোড করুন।');
+
+    const finalImages = portfolioImages.length > 0
+      ? portfolioImages
+      : (portfolioUrl.trim() ? [portfolioUrl.trim()] : []);
+
+    if (!portfolioTitle.trim() || finalImages.length === 0) {
+      alert('দয়া করে শিরোনাম লিখুন এবং কমপক্ষে একটি ছবি আপলোড বা লিংক প্রদান করুন।');
       return;
     }
+
+    const primaryCover = (portfolioUrl && finalImages.includes(portfolioUrl))
+      ? portfolioUrl
+      : finalImages[0];
 
     const tagsArray = portfolioTags
       .split(',')
@@ -236,7 +324,8 @@ export default function CustomerPortal({
         id: editingPortfolioItem.id,
         title: portfolioTitle.trim(),
         category: portfolioCategory,
-        url: portfolioUrl,
+        url: primaryCover,
+        images: finalImages,
         eventName: portfolioEventName.trim(),
         customerName: portfolioCustomerName.trim(),
         date: portfolioDate,
@@ -249,7 +338,8 @@ export default function CustomerPortal({
       onAddPortfolioItem({
         title: portfolioTitle.trim(),
         category: portfolioCategory,
-        url: portfolioUrl,
+        url: primaryCover,
+        images: finalImages,
         eventName: portfolioEventName.trim(),
         customerName: portfolioCustomerName.trim(),
         date: portfolioDate,
@@ -503,46 +593,51 @@ export default function CustomerPortal({
           }`}
         >
           <Briefcase size={14} className="stroke-[2.5]" />
-          অনলাইন বুকিং ফর্ম
+          অনলাইন বুকিং ও এস্টিমেট
         </button>
-        <button
-          onClick={() => setActiveTab('inbox')}
-          className={`flex-1 min-w-[130px] py-2.5 px-3 text-center text-xs font-black uppercase tracking-tight flex items-center justify-center gap-1.5 rounded-xl transition cursor-pointer relative ${
-            activeTab === 'inbox'
-              ? 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white shadow-md scale-[1.01]'
-              : 'bg-transparent text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-          }`}
-        >
-          <Send size={14} className="stroke-[2.5]" />
-          বুকিং ইনবক্স (আবেদন)
-          {onlineBookings.filter(b => b.status === 'Pending').length > 0 && (
-            <span className="absolute -top-1 -right-1 bg-rose-600 text-white text-[10px] w-5 h-5 flex items-center justify-center font-black rounded-full border-2 border-white shadow-sm animate-pulse">
-              {onlineBookings.filter(b => b.status === 'Pending').length}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab('portal')}
-          className={`flex-1 min-w-[140px] py-2.5 px-3 text-center text-xs font-black uppercase tracking-tight flex items-center justify-center gap-1.5 rounded-xl transition cursor-pointer ${
-            activeTab === 'portal'
-              ? 'bg-gradient-to-r from-purple-700 via-indigo-600 to-teal-500 text-white shadow-md scale-[1.01]'
-              : 'bg-transparent text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-          }`}
-        >
-          <User size={14} className="stroke-[2.5]" />
-          কাস্টমার পোর্টাল সিমুলেটর
-        </button>
-        <button
-          onClick={() => setActiveTab('documents')}
-          className={`flex-1 min-w-[130px] py-2.5 px-3 text-center text-xs font-black uppercase tracking-tight flex items-center justify-center gap-1.5 rounded-xl transition cursor-pointer ${
-            activeTab === 'documents'
-              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md scale-[1.01]'
-              : 'bg-transparent text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-          }`}
-        >
-          <FileText size={14} className="stroke-[2.5]" />
-          দলিল ও ফাইল ম্যানেজার
-        </button>
+
+        {canEdit && (
+          <>
+            <button
+              onClick={() => setActiveTab('inbox')}
+              className={`flex-1 min-w-[130px] py-2.5 px-3 text-center text-xs font-black uppercase tracking-tight flex items-center justify-center gap-1.5 rounded-xl transition cursor-pointer relative ${
+                activeTab === 'inbox'
+                  ? 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white shadow-md scale-[1.01]'
+                  : 'bg-transparent text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+            >
+              <Send size={14} className="stroke-[2.5]" />
+              বুকিং ইনবক্স (আবেদন)
+              {onlineBookings.filter(b => b.status === 'Pending').length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-rose-600 text-white text-[10px] w-5 h-5 flex items-center justify-center font-black rounded-full border-2 border-white shadow-sm animate-pulse">
+                  {onlineBookings.filter(b => b.status === 'Pending').length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('portal')}
+              className={`flex-1 min-w-[140px] py-2.5 px-3 text-center text-xs font-black uppercase tracking-tight flex items-center justify-center gap-1.5 rounded-xl transition cursor-pointer ${
+                activeTab === 'portal'
+                  ? 'bg-gradient-to-r from-purple-700 via-indigo-600 to-teal-500 text-white shadow-md scale-[1.01]'
+                  : 'bg-transparent text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+            >
+              <User size={14} className="stroke-[2.5]" />
+              কাস্টমার পোর্টাল সিমুলেটর
+            </button>
+            <button
+              onClick={() => setActiveTab('documents')}
+              className={`flex-1 min-w-[130px] py-2.5 px-3 text-center text-xs font-black uppercase tracking-tight flex items-center justify-center gap-1.5 rounded-xl transition cursor-pointer ${
+                activeTab === 'documents'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md scale-[1.01]'
+                  : 'bg-transparent text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+            >
+              <FileText size={14} className="stroke-[2.5]" />
+              দলিল ও ফাইল ম্যানেজার
+            </button>
+          </>
+        )}
       </div>
 
       {/* 🌟 Official Business Profile & 1-Click WhatsApp + Facebook Connect Card */}
@@ -653,7 +748,7 @@ export default function CustomerPortal({
                 </span>
               </div>
               <h2 className="text-lg sm:text-xl font-black uppercase text-slate-900 mt-2">
-                রিত্তিকা ডেকোরেশন ও স্টেজ ডিজাইন পোর্টফোলিও
+                রিত্তিকা ইভেন্ট ম্যানেজমেন্ট পোর্টফোলিও
               </h2>
               <p className="text-xs font-medium text-slate-600 mt-1 max-w-2xl leading-relaxed">
                 কাস্টমারকে আমাদের প্রিমিয়াম কাজগুলো দেখান, একাধিক ক্যাটাগরি ফিল্টার করুন, ছবি ফুল স্ক্রিন জুম-প্যান করুন এবং প্রফেশনাল ভাইবে স্লাইড চালু করুন।
@@ -858,32 +953,48 @@ export default function CustomerPortal({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredPortfolio.map((item, idx) => {
                 const originalItem = portfolioItems.find(p => p.id === item.id);
+                const itemImages = item.images && item.images.length > 0 ? item.images : (item.url ? [item.url] : []);
+                const currentImgIdx = (activeCardImageIdx[item.id] !== undefined && activeCardImageIdx[item.id] < itemImages.length) 
+                  ? activeCardImageIdx[item.id] 
+                  : 0;
+                const activePhotoUrl = itemImages[currentImgIdx] || item.url;
+
                 return (
                   <div 
                     key={item.id}
-                    onClick={() => setPortfolioLightboxIdx(idx)}
-                    className="group neo-card bg-white border border-slate-200/90 shadow-md hover:shadow-xl overflow-hidden cursor-pointer hover:-translate-y-1.5 transition-all duration-300 flex flex-col justify-between"
+                    className="group neo-card bg-white border border-slate-200/90 shadow-md hover:shadow-xl overflow-hidden hover:-translate-y-1.5 transition-all duration-300 flex flex-col justify-between"
                   >
-                    {/* Photo Container with Hover Zoom */}
+                    {/* Photo Container with Multi-Photo cycling & Hover Zoom */}
                     <div className="relative h-60 w-full overflow-hidden bg-slate-900 border-b border-slate-100">
                       <img
-                        src={item.url}
+                        src={activePhotoUrl}
                         alt={item.title}
-                        className="w-full h-full object-cover group-hover:scale-108 transition duration-500"
+                        onClick={() => setPortfolioLightboxIdx(idx)}
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-500 cursor-pointer"
                       />
-                      <div className="absolute top-3 left-3">
+
+                      {/* Category Badge */}
+                      <div className="absolute top-3 left-3 flex items-center gap-1.5 z-10">
                         <span className="bg-gradient-to-r from-slate-950/90 to-purple-950/90 text-amber-300 text-[10px] font-black uppercase px-2.5 py-1 rounded-full border border-amber-400/40 shadow-sm backdrop-blur-md">
                           {item.category}
                         </span>
+
+                        {/* Multiple Photos Count Badge */}
+                        {itemImages.length > 1 && (
+                          <span className="bg-gradient-to-r from-rose-600 to-amber-500 text-white text-[10px] font-black px-2 py-0.8 rounded-full shadow-md flex items-center gap-1 backdrop-blur-md border border-white/30">
+                            <ImageIcon size={11} className="stroke-[2.5]" />
+                            <span>{toBengaliNumber(itemImages.length)} টি ছবি</span>
+                          </span>
+                        )}
                       </div>
 
                       {/* Admin Edit & Delete Actions */}
                       {isAdmin && originalItem && (
-                        <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
+                        <div className="absolute top-3 right-3 flex items-center gap-1.5 z-20">
                           <button
                             onClick={(e) => handleOpenEditPortfolio(originalItem, e)}
-                            className="p-1.5 bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-500 hover:to-yellow-600 text-slate-950 rounded-lg shadow-sm cursor-pointer"
-                            title="এডিট করুন"
+                            className="p-1.5 bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-500 hover:to-yellow-600 text-slate-950 rounded-lg shadow-md cursor-pointer transition hover:scale-105"
+                            title="এডিট করুন ও আরও ছবি যুক্ত করুন"
                           >
                             <Edit2 size={13} className="stroke-[2.5]" />
                           </button>
@@ -894,7 +1005,7 @@ export default function CustomerPortal({
                                 onDeletePortfolioItem(item.id);
                               }
                             }}
-                            className="p-1.5 bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white rounded-lg shadow-sm cursor-pointer"
+                            className="p-1.5 bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white rounded-lg shadow-md cursor-pointer transition hover:scale-105"
                             title="মুছে ফেলুন"
                           >
                             <Trash2 size={13} className="stroke-[2.5]" />
@@ -902,11 +1013,69 @@ export default function CustomerPortal({
                         </div>
                       )}
 
-                      {/* Hover Overlay */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-4">
-                        <div className="bg-gradient-to-r from-amber-400 via-rose-500 to-purple-600 text-white px-3.5 py-1.5 text-xs font-black uppercase rounded-full flex items-center gap-1.5 shadow-lg">
+                      {/* Photo Cycling Navigation Controls (if multiple photos) */}
+                      {itemImages.length > 1 && (
+                        <div className="absolute inset-x-2 top-1/2 -translate-y-1/2 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveCardImageIdx(prev => ({
+                                ...prev,
+                                [item.id]: (currentImgIdx - 1 + itemImages.length) % itemImages.length
+                              }));
+                            }}
+                            className="p-1.5 bg-black/75 hover:bg-black text-white rounded-full transition pointer-events-auto cursor-pointer border border-white/20 shadow-md"
+                            title="আগের ছবি"
+                          >
+                            <ChevronDown size={14} className="rotate-90 stroke-[3]" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveCardImageIdx(prev => ({
+                                ...prev,
+                                [item.id]: (currentImgIdx + 1) % itemImages.length
+                              }));
+                            }}
+                            className="p-1.5 bg-black/75 hover:bg-black text-white rounded-full transition pointer-events-auto cursor-pointer border border-white/20 shadow-md"
+                            title="পরের ছবি"
+                          >
+                            <ChevronDown size={14} className="-rotate-90 stroke-[3]" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Multi-Photo Thumbnail Dots Indicator */}
+                      {itemImages.length > 1 && (
+                        <div className="absolute bottom-2.5 inset-x-0 flex items-center justify-center gap-1 z-10">
+                          {itemImages.slice(0, 6).map((_, dotIdx) => (
+                            <button
+                              key={dotIdx}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveCardImageIdx(prev => ({ ...prev, [item.id]: dotIdx }));
+                              }}
+                              className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                                currentImgIdx === dotIdx ? 'w-4 bg-amber-400 shadow-xs' : 'w-1.5 bg-white/60 hover:bg-white'
+                              }`}
+                            />
+                          ))}
+                          {itemImages.length > 6 && (
+                            <span className="text-[9px] text-amber-300 font-bold bg-black/60 px-1 rounded">
+                              +{itemImages.length - 6}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Hover Overlay for Slide View */}
+                      <div 
+                        onClick={() => setPortfolioLightboxIdx(idx)}
+                        className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-4 cursor-pointer"
+                      >
+                        <div className="bg-gradient-to-r from-amber-400 via-rose-500 to-purple-600 text-white px-3.5 py-1.5 text-xs font-black uppercase rounded-full flex items-center gap-1.5 shadow-lg transform group-hover:scale-105 transition">
                           <Eye size={14} className="stroke-[2.5]" />
-                          ফুল স্ক্রিন স্লাইড (Slide View)
+                          ফুল স্ক্রিন স্লাইড ({toBengaliNumber(itemImages.length)} টি ছবি)
                         </div>
                       </div>
                     </div>
@@ -915,7 +1084,10 @@ export default function CustomerPortal({
                     <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
                       <div>
                         <div className="flex items-start justify-between gap-2">
-                          <h4 className="text-xs font-black text-slate-900 uppercase tracking-tight group-hover:text-purple-700 transition">
+                          <h4 
+                            onClick={() => setPortfolioLightboxIdx(idx)}
+                            className="text-xs font-black text-slate-900 uppercase tracking-tight group-hover:text-purple-700 transition cursor-pointer"
+                          >
                             {item.title}
                           </h4>
                         </div>
@@ -946,9 +1118,12 @@ export default function CustomerPortal({
                           ) : (
                             <span className="text-slate-400">কাস্টম বাজেট</span>
                           )}
-                          <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-rose-600 font-black uppercase flex items-center gap-1 text-[10px]">
-                            স্লাইড প্লে ▶
-                          </span>
+                          <button
+                            onClick={() => setPortfolioLightboxIdx(idx)}
+                            className="text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-rose-600 font-black uppercase flex items-center gap-1 text-[10px] hover:opacity-80 cursor-pointer"
+                          >
+                            স্লাইড প্লে ({toBengaliNumber(itemImages.length)}) ▶
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -960,36 +1135,36 @@ export default function CustomerPortal({
         </div>
       )}
 
-      {/* 🌟 Modal: Add / Edit Portfolio Item */}
+      {/* 🌟 Modal: Add / Edit Portfolio Item with Unlimited Multi-Photo Upload */}
       {isPortfolioModalOpen && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-white border-4 border-black p-6 relative max-w-xl w-full shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] max-h-[90vh] overflow-y-auto">
+          <div className="bg-white border-4 border-black p-5 sm:p-6 relative max-w-2xl w-full shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] max-h-[92vh] overflow-y-auto">
             <button
               onClick={() => setIsPortfolioModalOpen(false)}
-              className="absolute right-4 top-4 p-1.5 border-2 border-black bg-white hover:bg-slate-100 text-black cursor-pointer"
+              className="absolute right-4 top-4 p-1.5 border-2 border-black bg-white hover:bg-slate-100 text-black cursor-pointer z-10"
             >
               <X size={16} className="stroke-[2.5]" />
             </button>
 
-            <h3 className="text-sm font-black uppercase text-black border-b-2 border-black pb-3 mb-4 flex items-center gap-2">
+            <h3 className="text-sm sm:text-base font-black uppercase text-black border-b-2 border-black pb-3 mb-4 flex items-center gap-2">
               <Sparkles size={18} className="text-yellow-500" />
-              {editingPortfolioItem ? 'পোর্টফোলিও ডেকোরেশন এডিট করুন' : 'নতুন পোর্টফোলিও ফটো/ভিডিও যোগ করুন'}
+              {editingPortfolioItem ? 'পোর্টফোলিও ডেকোরেশন এডিট ও ছবি ব্যবস্থাপনা' : 'নতুন পোর্টফোলিও ও মাল্টিপল ফটো আপলোড'}
             </h3>
 
-            <form onSubmit={handleSavePortfolio} className="space-y-3.5 text-xs font-bold text-black">
+            <form onSubmit={handleSavePortfolio} className="space-y-4 text-xs font-bold text-black">
               <div>
                 <label className="block mb-1">কাজের শিরোনাম (Title) *</label>
                 <input
                   type="text"
                   required
-                  placeholder="যেমন: প্রিমিয়াম গোল্ডেন ওয়েডিং স্টেজ ডেকোরেশন"
+                  placeholder="যেমন: প্রিমিয়াম গোল্ডেন ওয়েডিং স্টেজ ও লাইটিং ডেকোরেশন"
                   value={portfolioTitle}
                   onChange={(e) => setPortfolioTitle(e.target.value)}
-                  className="w-full px-3 py-2 border-2 border-black bg-slate-50 focus:bg-white"
+                  className="w-full px-3 py-2 border-2 border-black bg-slate-50 focus:bg-white rounded-none"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block mb-1">ক্যাটাগরি *</label>
                   <select
@@ -1013,36 +1188,183 @@ export default function CustomerPortal({
                 </div>
               </div>
 
-              {/* Photo Upload or URL */}
-              <div>
-                <label className="block mb-1">ছবির URL অথবা কম্পিউটার থেকে ফাইল আপলোড *</label>
-                <div className="flex gap-2 mb-2">
-                  <input
-                    type="text"
-                    placeholder="https://images.unsplash.com/... বা ডাইরেক্ট ইমেজ লিংক"
-                    value={portfolioUrl}
-                    onChange={(e) => setPortfolioUrl(e.target.value)}
-                    className="flex-1 px-3 py-2 border-2 border-black bg-slate-50 focus:bg-white text-[11px]"
-                  />
+              {/* 🌟 Multi-Photo Upload & Gallery Management Box */}
+              <div className="p-3.5 bg-gradient-to-br from-amber-500/10 via-purple-500/10 to-rose-500/10 border-2 border-black rounded space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <label className="text-xs font-black uppercase text-slate-900 flex items-center gap-1.5">
+                    <ImageIcon size={16} className="text-purple-700" />
+                    <span>মাল্টিপল ফটো আপলোড ও স্লাইডশো গ্যালারি *</span>
+                  </label>
+                  <span className="text-[11px] font-black bg-purple-950 text-amber-300 px-2.5 py-0.5 rounded-full">
+                    মোট {toBengaliNumber(portfolioImages.length)} টি ছবি যুক্ত রয়েছে
+                  </span>
                 </div>
-                <div className="border-2 border-dashed border-black bg-slate-50 p-3 text-center cursor-pointer hover:bg-slate-100 relative rounded">
-                  <Upload size={20} className="mx-auto text-slate-500 mb-1" />
-                  <span className="text-[11px] block font-bold text-slate-700">ডিভাইস থেকে ছবি আপলোড করতে ক্লিক করুন</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handlePortfolioImageUpload}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                  />
+                <p className="text-[11px] font-medium text-slate-600 leading-relaxed">
+                  ডিভাইস থেকে একসাথে একাধিক ছবি নির্বাচন করুন অথবা ছবির ওয়েব লিংক দিন। যেকোনো সময় ছবি ডিলিট বা নতুন আরও ছবি যুক্ত করতে পারবেন।
+                </p>
+
+                {/* Multi-File Upload Dropzone */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* File Upload Trigger */}
+                  <div className="border-2 border-dashed border-black bg-white p-3 text-center cursor-pointer hover:bg-amber-50/50 relative rounded transition flex flex-col items-center justify-center">
+                    <Upload size={22} className="text-purple-700 mb-1" />
+                    <span className="text-[11px] block font-black text-slate-900">
+                      কম্পিউটার/মোবাইল থেকে ছবি আপলোড করুন
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      (একসাথে একাধিক ছবি সিলেক্ট করা যাবে)
+                    </span>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={handleMultipleImageUpload}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                  </div>
+
+                  {/* Batch URL Adder */}
+                  <div className="bg-white border-2 border-black p-2.5 rounded flex flex-col justify-between gap-1.5">
+                    <span className="text-[10px] font-black uppercase text-slate-700">অথবা ওয়েব লিংক থেকে ছবি যোগ করুন:</span>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        placeholder="https://... ইমেজ লিংক পেস্ট করুন"
+                        value={newImageUrlInput}
+                        onChange={(e) => setNewImageUrlInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddUrlImage();
+                          }
+                        }}
+                        className="flex-1 px-2 py-1.5 border border-black text-[11px] bg-slate-50 focus:bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddUrlImage}
+                        className="px-2.5 py-1.5 bg-black text-white text-xs font-black uppercase hover:bg-slate-800 cursor-pointer"
+                      >
+                        + যোগ
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                {portfolioUrl && (
-                  <div className="mt-2 h-28 border-2 border-black bg-slate-100 flex items-center justify-center overflow-hidden">
-                    <img src={portfolioUrl} alt="Preview" className="max-h-full max-w-full object-contain" />
+
+                {/* Uploaded Photos Grid with Delete & Cover selection */}
+                {portfolioImages.length > 0 ? (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                      <span>যুক্ত করা ছবিসমূহ ({toBengaliNumber(portfolioImages.length)} টি):</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          if (window.confirm('আপনি কি এই ডেকোরেশনের সকল আপলোড করা ছবি মুছে ফেলতে চান?')) {
+                            setPortfolioImages([]);
+                            setPortfolioUrl('');
+                          }
+                        }}
+                        className="text-[11px] text-rose-600 hover:text-rose-700 hover:underline font-black cursor-pointer flex items-center gap-1"
+                      >
+                        <Trash2 size={12} />
+                        সবগুলো ছবি মুছুন
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-72 overflow-y-auto p-2 bg-white border-2 border-black rounded">
+                      {portfolioImages.map((imgUrl, imgIdx) => {
+                        const isCover = portfolioUrl === imgUrl || (!portfolioUrl && imgIdx === 0);
+                        return (
+                          <div
+                            key={imgIdx}
+                            className={`relative rounded-lg border-2 overflow-hidden bg-slate-50 transition flex flex-col justify-between shadow-xs ${
+                              isCover ? 'border-amber-500 ring-2 ring-amber-400 bg-amber-50/20' : 'border-slate-300 hover:border-slate-800'
+                            }`}
+                          >
+                            {/* Image Thumbnail */}
+                            <div className="relative aspect-[4/3] w-full bg-slate-200 overflow-hidden">
+                              <img
+                                src={imgUrl}
+                                alt={`ডেকোরেশন ছবি ${imgIdx + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+
+                              {/* Active Cover Badge */}
+                              {isCover ? (
+                                <div className="absolute top-1.5 left-1.5 bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-1">
+                                  <span>★</span> মূল প্রচ্ছদ
+                                </div>
+                              ) : (
+                                <div className="absolute top-1.5 left-1.5 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.2 rounded backdrop-blur-xs">
+                                  ছবি #{toBengaliNumber(imgIdx + 1)}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Clean, Non-Overlapping Action Toolbar */}
+                            <div className="p-1.5 bg-slate-100 border-t border-slate-300 flex items-center gap-1.5">
+                              {isCover ? (
+                                <span className="flex-1 text-[10px] font-black text-amber-700 bg-amber-100 py-1 px-1 rounded text-center truncate">
+                                  ✓ প্রচ্ছদ ছবি
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleSetCoverPhoto(imgUrl);
+                                  }}
+                                  className="flex-1 py-1 px-1 bg-amber-400 hover:bg-amber-500 text-slate-950 text-[10px] font-black rounded uppercase cursor-pointer transition text-center truncate"
+                                  title="এই ছবিটিকে কার্ডের প্রচ্ছদ ছবি হিসেবে সেট করুন"
+                                >
+                                  প্রচ্ছদ বানান
+                                </button>
+                              )}
+
+                              {/* Explicit Delete Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleRemovePhoto(imgIdx);
+                                }}
+                                className="py-1 px-2 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black rounded cursor-pointer transition flex items-center gap-1 shrink-0"
+                                title="এই ছবিটি তালিকা থেকে মুছে ফেলুন"
+                              >
+                                <Trash2 size={11} />
+                                <span>মুছুন</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Add more photo card */}
+                      <label className="aspect-[4/3] border-2 border-dashed border-purple-400 hover:border-purple-600 bg-purple-50/50 hover:bg-purple-100/60 rounded-lg flex flex-col items-center justify-center cursor-pointer transition text-purple-800 p-2 text-center">
+                        <Plus size={24} className="stroke-[3] mb-1" />
+                        <span className="text-[11px] font-black">আরও ছবি যোগ করুন</span>
+                        <span className="text-[9px] text-purple-600 font-medium">ক্লিক করে ফাইল সিলেক্ট</span>
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          onChange={handleMultipleImageUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 text-center bg-white border-2 border-dashed border-slate-300 rounded text-slate-500 text-xs font-medium">
+                    এখনো কোনো ছবি আপলোড করা হয়নি। উপরে ফাইল নির্বাচন করুন বা ওয়েব লিংক দিন।
                   </div>
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block mb-1">ইভেন্টের নাম (ঐচ্ছিক)</label>
                   <input
@@ -1069,7 +1391,7 @@ export default function CustomerPortal({
                 <label className="block mb-1">হাইলাইটস ট্যাগ (কমা দিয়ে আলাদা করুন)</label>
                 <input
                   type="text"
-                  placeholder="রয়্যাল লুক, প্রাকৃতিক ফুল, নিওন লাইটিং"
+                  placeholder="রয়্যাল লুক, প্রাকৃতিক ফুল, নিওন লাইটিং, আর্চ স্টেজ"
                   value={portfolioTags}
                   onChange={(e) => setPortfolioTags(e.target.value)}
                   className="w-full px-3 py-2 border-2 border-black bg-slate-50 focus:bg-white text-[11px]"
@@ -1091,15 +1413,15 @@ export default function CustomerPortal({
                 <button
                   type="button"
                   onClick={() => setIsPortfolioModalOpen(false)}
-                  className="flex-1 py-2 border-2 border-black bg-white hover:bg-slate-100 font-black cursor-pointer"
+                  className="flex-1 py-2.5 border-2 border-black bg-white hover:bg-slate-100 font-black cursor-pointer uppercase text-xs"
                 >
                   বাতিল
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 border-2 border-black bg-yellow-400 hover:bg-yellow-500 text-black font-black uppercase cursor-pointer shadow-[2px_2px_0px_0px_#000000]"
+                  className="flex-1 py-2.5 border-2 border-black bg-yellow-400 hover:bg-yellow-500 text-black font-black uppercase text-xs cursor-pointer shadow-sm"
                 >
-                  {editingPortfolioItem ? 'পরিবর্তন সেভ করুন' : 'সংরক্ষণ করুন'}
+                  {editingPortfolioItem ? 'আপডেট সংরক্ষণ করুন' : 'পোর্টফোলিও প্রকাশ করুন'}
                 </button>
               </div>
             </form>
@@ -1298,8 +1620,8 @@ export default function CustomerPortal({
         </div>
       )}
 
-      {/* 2. Online Booking Requests Inbox */}
-      {activeTab === 'inbox' && (
+      {/* 2. Online Booking Requests Inbox (Admin / Staff Only) */}
+      {activeTab === 'inbox' && canEdit && (
         <div className="bg-white border-4 border-black p-5 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
           <h3 className="text-sm font-black text-black border-b-2 border-black pb-3 mb-4 flex items-center gap-1.5">
             <Send size={16} className="text-amber-500 stroke-[2.5]" />
@@ -1370,8 +1692,8 @@ export default function CustomerPortal({
         </div>
       )}
 
-      {/* 3. Customer Portal Simulator */}
-      {activeTab === 'portal' && (
+      {/* 3. Customer Portal Simulator (Admin / Staff Only) */}
+      {activeTab === 'portal' && canEdit && (
         <div className="space-y-6" id="customer-portal-sim">
           <div className="neo-card p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
@@ -1420,7 +1742,7 @@ export default function CustomerPortal({
                     <a
                       href={getWhatsAppLink(
                         portalCustomer.mobile,
-                        `প্রিয় ${portalCustomer.name},\nরিত্তিকা ডেকোরেশন থেকে আপনার বুকিং অনুযায়ী মোট বকেয়া ৳${totalDueAmount} টাকা পরিশোধ করার জন্য অনুরোধ করা হচ্ছে।\nধন্যবাদ।`
+                        `প্রিয় ${portalCustomer.name},\nরিত্তিকা ইভেন্ট ম্যানেজমেন্ট থেকে আপনার বুকিং অনুযায়ী মোট বকেয়া ৳${totalDueAmount} টাকা পরিশোধ করার জন্য অনুরোধ করা হচ্ছে।\nধন্যবাদ।`
                       )}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -1550,8 +1872,8 @@ export default function CustomerPortal({
         </div>
       )}
 
-      {/* 4. Document uploads manager */}
-      {activeTab === 'documents' && (
+      {/* 4. Document uploads manager (Admin / Staff Only) */}
+      {activeTab === 'documents' && canEdit && (
         <div className="space-y-4" id="documents-manager-panel">
           {/* Security Alert if not logged in */}
           {!canEdit && (
@@ -1733,7 +2055,7 @@ export default function CustomerPortal({
         onClose={() => setPortfolioLightboxIdx(null)}
         initialIndex={portfolioLightboxIdx ?? 0}
         items={filteredPortfolio}
-        title="রিত্তিকা ডেকোরেশন ও স্টেজ ডিজাইন পোর্টফোলিও শোকেস"
+        title="রিত্তিকা ইভেন্ট ম্যানেজমেন্ট পোর্টফোলিও শোকেস"
         canDelete={isAdmin}
         onDelete={(id) => {
           onDeletePortfolioItem(id);

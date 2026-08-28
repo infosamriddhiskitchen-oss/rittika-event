@@ -413,7 +413,7 @@ export default function MasterStock({
               <span className="text-xs font-black uppercase text-slate-500 mb-2">প্রিন্টযোগ্য কিউআর স্টিকার লেবেল</span>
               
               <div className="p-4 bg-white border-3 border-dashed border-black flex flex-col items-center text-center max-w-[200px]" id="printable-qr-sticker">
-                <span className="text-[10px] font-black text-black tracking-wider uppercase">DECOR ERP STICKER</span>
+                <span className="text-[10px] font-black text-black tracking-wider uppercase">RITTIKA EVENT STICKER</span>
                 
                 {/* SVG Mock QR Code */}
                 <div className="w-32 h-32 my-3 p-1 border-2 border-black bg-white flex items-center justify-center">
@@ -763,12 +763,14 @@ export default function MasterStock({
               
               {/* Header */}
               <div className="flex flex-col items-center justify-center text-center border-b-3 border-black pb-5 mb-5">
-                <h1 className="text-2xl font-black text-black tracking-tight uppercase italic">রিত্তিকা ইভেন্ট ম্যানেজমেন্ট ডেকোরেশন</h1>
-                <p className="text-xs font-bold text-slate-700 mt-1">সব ধরণের বিয়ের গেট, স্টেজ লাইটিং, প্যান্ডেল এবং ডেকোরেশন সামগ্রীর নির্ভরযোগ্য সরবরাহকারী ও ভাড়াদাতা।</p>
-                <div className="flex gap-4 mt-2 text-[10px] font-black uppercase text-black">
-                  <span>ঠিকানা: ঢাকা, বাংলাদেশ</span>
+                <h1 className="text-2xl font-black text-black tracking-tight uppercase italic">Rittika Event Management</h1>
+                <p className="text-xs font-bold text-slate-800 mt-1">সব ধরণের এক্সক্লুসিভ ওয়েডিং স্টেজ, লাইটিং, গেট ও ইভেন্ট ম্যানেজমেন্ট সার্ভিস।</p>
+                <div className="flex flex-wrap justify-center gap-3 mt-2 text-[10px] font-black uppercase text-black">
+                  <span>Owner/CEO: Robin Kumar</span>
                   <span>•</span>
-                  <span>মোবাইল: ০১৮২৪-৫৯৭৫৬২</span>
+                  <span>মোবাইল: +880 1721-779396</span>
+                  <span>•</span>
+                  <span>অফিসের ঠিকানা: রথপাড়া, ভেড়ামারা, কুষ্টিয়া, বাংলাদেশ — 7040</span>
                   <span>•</span>
                   <span>রিপোর্ট তারিখ: {toBengaliNumber(new Date().toLocaleDateString('bn-BD'))}</span>
                 </div>

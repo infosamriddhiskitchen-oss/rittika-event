@@ -223,7 +223,7 @@ export interface SalesInvoice {
   id: string;
   invoiceNo: string;
   date: string;
-  customerId: string;
+  customerId?: string;
   customerName: string;
   customerMobile: string;
   customerAddress: string;
@@ -245,7 +245,7 @@ export interface RentalInvoice {
   id: string;
   invoiceNo: string;
   date: string;
-  customerId: string;
+  customerId?: string;
   customerName: string;
   customerMobile: string;
   eventName: string;
@@ -265,23 +265,55 @@ export interface RentalInvoice {
 }
 
 // Module 24: Event Invoice System
+export interface EventExtraItem {
+  id: string;
+  name: string;
+  qty: number;
+  unit?: string;
+  rate: number;
+  total: number;
+  note?: string;
+}
+
 export interface EventInvoice {
   id: string;
   invoiceNo: string;
   date: string;
-  eventId: string;
+  eventId?: string;
   eventName: string;
   eventDate: string;
   venue: string;
-  customerId: string;
+  customerId?: string;
   customerName: string;
   customerMobile: string;
+  customerAddress?: string;
   decorationPackage: string;
   materialsUsed: { name: string; qty: number }[];
   labourCost: number;
   transportCost: number;
   extraCharges: number;
   totalCost: number;
+  
+  // 🌟 Extended Final Bill Fields after Event Completion
+  quotationId?: string;
+  quotationNo?: string;
+  baseBudget?: number; // মূল বাজেট / কোটেশন চুক্তি
+  advancePaid?: number; // অগ্রিম পরিশোধিত
+  advancePaymentDate?: string;
+  advancePaymentMethod?: string;
+  extraItems?: EventExtraItem[]; // অতিরিক্ত কাজের তালিকা ও বিবরণ
+  extraWorkCost?: number; // অতিরিক্ত কাজের সর্বমোট বিল
+  extraChargesDetails?: string;
+  discount?: number; // বিশেষ ছাড়
+  damageDeduction?: number; // মালামাল ক্ষতিপূরণ বা জরিমানা
+  netPayable?: number; // চূড়ান্ত সর্বমোট বিল
+  dueAmount?: number; // অবশিষ্ট প্রদেয় বকেয়া বিল
+  paymentStatus?: 'Paid' | 'Partial' | 'Due';
+  paymentMethod?: string;
+  termsAndConditions?: string;
+  notes?: string;
+  qrData?: string;
+  signatureUrl?: string;
 }
 
 // Module 25: Event Gallery & Photo Management
@@ -347,6 +379,7 @@ export interface PortfolioItem {
   title: string;
   category: string;
   url: string;
+  images?: string[]; // Multiple photos array for unlimited slideshow & galleries
   eventName?: string;
   customerName?: string;
   date?: string;
