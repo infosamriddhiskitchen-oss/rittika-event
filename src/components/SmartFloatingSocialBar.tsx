@@ -8,9 +8,13 @@ import {
 
 interface SmartFloatingSocialBarProps {
   isImmersiveFullView?: boolean;
+  onOpenWhatsAppModal?: () => void;
 }
 
-export default function SmartFloatingSocialBar({ isImmersiveFullView = false }: SmartFloatingSocialBarProps) {
+export default function SmartFloatingSocialBar({ 
+  isImmersiveFullView = false,
+  onOpenWhatsAppModal 
+}: SmartFloatingSocialBarProps) {
   const [isScrolledDown, setIsScrolledDown] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
   const lastScrollYRef = useRef<number>(0);
@@ -78,18 +82,32 @@ export default function SmartFloatingSocialBar({ isImmersiveFullView = false }: 
     >
       <div className="flex items-center gap-2 bg-slate-950/90 backdrop-blur-xl p-2 sm:px-3 sm:py-2 rounded-full border border-amber-400/30 shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
         {/* WhatsApp Fast Action Button */}
-        <a
-          href="https://wa.me/8801721779396?text=%E0%A6%A8%E0%A6%AE%E0%A6%B8%E0%A7%8D%E0%A6%95%E0%A6%BE%E0%A6%B0%2F%E0%A6%B9%E0%A7%8D%E0%A6%AF%E0%A6%BE%E0%A6%B2%E0%A7%8B%2C%20%E0%A6%B0%E0%A6%BF%E0%A6%A4%E0%A7%8D%E0%A6%A4%E0%A6%BF%E0%A6%95%E0%A6%BE%20%E0%A6%87%E0%A6%AD%E0%A7%87%E0%A6%A8%E0%A7%8D%E0%A6%9F%20%E0%A6%AE%E0%A7%8D%E0%A6%AF%E0%A6%BE%E0%A6%A8%E0%A7%87%E0%A6%9C%E0%A6%AE%E0%A7%87%E0%A6%A8%E0%A7%8D%E0%A6%9F%20%E0%A6%A5%E0%A7%87%E0%A6%95%E0%A7%87%20%E0%A6%87%E0%A6%AD%E0%A7%87%E0%A6%A8%E0%A7%8D%E0%A6%9F%20%E0%A6%A1%E0%A7%87%E0%A6%95%E0%A7%8B%E0%A6%B0%E0%A7%87%E0%A6%B6%E0%A6%A8%20%E0%A6%93%20%E0%A6%AC%E0%A7%81%E0%A6%95%E0%A6%BF%E0%A6%82%20%E0%A6%B8%E0%A6%82%E0%A6%95%E0%A7%8D%E0%A6%B0%E0%A6%BE%E0%A6%A8%E0%A7%8D%E0%A6%A4%20%E0%A6%A4%E0%A6%A5%E0%A7%8D%E0%A6%AF%20%E0%A6%9C%E0%A6%BE%E0%A6%A8%E0%A6%A4%E0%A7%87%20%E0%A6%9A%E0%A6%BE%E0%A6%87%E0%A7%A4"
-          target="_blank"
-          rel="noopener noreferrer"
-          title="হোয়াটসঅ্যাপে সরাসরি মেসেজ পাঠান (01721779396)"
-          className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white px-3 py-1.5 rounded-full text-xs font-black shadow-md hover:scale-105 active:scale-95 transition cursor-pointer"
-        >
-          <div className="w-5 h-5 rounded-full bg-white text-emerald-600 flex items-center justify-center shrink-0">
-            <MessageCircle size={13} className="fill-emerald-600 text-white" />
-          </div>
-          <span className="text-[11px] font-black tracking-tight">WhatsApp</span>
-        </a>
+        {onOpenWhatsAppModal ? (
+          <button
+            type="button"
+            onClick={onOpenWhatsAppModal}
+            title="হোয়াটসঅ্যাপে সরাসরি মেসেজ বা স্মার্ট বুকিং ইনকোয়ারি পাঠান"
+            className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white px-3 py-1.5 rounded-full text-xs font-black shadow-md hover:scale-105 active:scale-95 transition cursor-pointer border-0"
+          >
+            <div className="w-5 h-5 rounded-full bg-white text-emerald-600 flex items-center justify-center shrink-0">
+              <MessageCircle size={13} className="fill-emerald-600 text-white" />
+            </div>
+            <span className="text-[11px] font-black tracking-tight">WhatsApp</span>
+          </button>
+        ) : (
+          <a
+            href="https://wa.me/8801721779396"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="হোয়াটসঅ্যাপে সরাসরি মেসেজ পাঠান (+880 1721-779396)"
+            className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white px-3 py-1.5 rounded-full text-xs font-black shadow-md hover:scale-105 active:scale-95 transition cursor-pointer"
+          >
+            <div className="w-5 h-5 rounded-full bg-white text-emerald-600 flex items-center justify-center shrink-0">
+              <MessageCircle size={13} className="fill-emerald-600 text-white" />
+            </div>
+            <span className="text-[11px] font-black tracking-tight">WhatsApp</span>
+          </a>
+        )}
 
         {/* Facebook Page Fast Action Button */}
         <a

@@ -178,17 +178,57 @@ export interface TripLog {
   note?: string;
 }
 
+export type BookingRequestStatus = 
+  | 'New' 
+  | 'Contacted' 
+  | 'Consultation Scheduled' 
+  | 'Quotation Sent' 
+  | 'Confirmed' 
+  | 'Completed' 
+  | 'Cancelled'
+  | 'Pending'
+  | 'Approved'
+  | 'Declined';
+
 export interface OnlineBooking {
   id: string;
-  date: string;
+  requestId?: string; // e.g. "REM-REQ-849201"
+  createdAt?: string; // ISO Timestamp or formatted date
+  
+  // Customer Information
   customerName: string;
   mobile: string;
+  email?: string;
+  
+  // Event Information
   eventType: string;
-  location: string;
+  date: string; // Event Date (YYYY-MM-DD)
+  eventTime?: string; // e.g. "সন্ধ্যা ৭:০০"
+  location: string; // Venue / Location
+  venueType?: string; // 'হল' | 'কমিউনিটি সেন্টার' | 'রেস্টুরেন্ট' | 'বাড়ি' | 'আউটডোর' | 'অন্যান্য'
   guestCount: number;
+  
+  // Decoration & Design
+  decorationStyle?: string; // 'মডার্ন' | 'মিনিমাল' | 'লাক্সারি' | 'ফুলের সাজসজ্জা' | 'ট্র্যাডিশনাল' | 'কাস্টম'
+  requiredServices?: string[]; // ['স্টেজ', 'গেট', 'লাইটিং', 'ফুলের সাজসজ্জা', 'সাউন্ড', 'সম্পূর্ণ ডেকোরেশন']
+  preferredTheme?: string;
+  referenceImageUrl?: string; // Base64 or image URL
+  referenceImages?: string[]; // Multiple photos array
+  additionalRequirements?: string;
+  
+  // Budget & Preferences
+  budgetRange?: string; // e.g. "৳৫০,০০০ - ৳১,০০,০০০"
   estimatedBudget: number;
-  status: 'Pending' | 'Approved' | 'Declined';
-  note?: string;
+  preferredContactMethod?: 'WhatsApp' | 'Phone Call' | 'Email';
+  preferredContactTime?: string; // e.g. "সন্ধ্যা ৬টা - ৮টা"
+  
+  // Message & Administration
+  note?: string; // Customer message / special notes
+  status: BookingRequestStatus;
+  adminNotes?: string;
+  assignedConsultant?: string;
+  assignedConsultantPhone?: string;
+  quotationId?: string;
 }
 
 export interface Attachment {
@@ -216,9 +256,20 @@ export interface PurchaseInvoice {
   paymentStatus: 'Paid' | 'Due' | 'Partial';
   fileUrl?: string; // base64 pdf or image
   fileName?: string;
+  files?: { name: string; url: string }[];
 }
 
 // Module 22: Sales Invoice System
+export interface SalesItem {
+  name: string;
+  qty: number;
+  rate: number;
+  total: number;
+  quantity?: number;
+  unitPrice?: number;
+  totalPrice?: number;
+}
+
 export interface SalesInvoice {
   id: string;
   invoiceNo: string;
@@ -227,20 +278,35 @@ export interface SalesInvoice {
   customerName: string;
   customerMobile: string;
   customerAddress: string;
-  items: {
-    name: string;
-    qty: number;
-    rate: number;
-    total: number;
-  }[];
+  items: SalesItem[];
   subtotal: number;
   discount: number;
   grandTotal: number;
   qrData?: string;
   signatureUrl?: string;
+  paymentStatus?: 'Paid' | 'Partial' | 'Due';
+  paymentMethod?: string;
+  notes?: string;
+  fileUrl?: string;
+  fileName?: string;
+  files?: { name: string; url: string }[];
+  itemName?: string;
 }
 
 // Module 23: Rental Invoice System
+export interface RentalItem {
+  name: string;
+  qty: number;
+  rate: number;
+  total: number;
+  quantity?: number;
+  totalDays?: number;
+  rentPerDay?: number;
+  days?: number;
+  unitPrice?: number;
+  totalPrice?: number;
+}
+
 export interface RentalInvoice {
   id: string;
   invoiceNo: string;
@@ -248,13 +314,9 @@ export interface RentalInvoice {
   customerId?: string;
   customerName: string;
   customerMobile: string;
+  customerAddress?: string;
   eventName: string;
-  items: {
-    name: string;
-    qty: number;
-    rate: number;
-    total: number;
-  }[];
+  items: RentalItem[];
   rentalCharges: number;
   securityDeposit: number;
   transportCharge: number;
@@ -262,6 +324,14 @@ export interface RentalInvoice {
   totalBill: number;
   paidAmount: number;
   dueAmount: number;
+  advancePaid?: number;
+  paymentStatus?: 'Paid' | 'Partial' | 'Due';
+  paymentMethod?: string;
+  notes?: string;
+  fileUrl?: string;
+  fileName?: string;
+  files?: { name: string; url: string }[];
+  itemName?: string;
 }
 
 // Module 24: Event Invoice System
@@ -272,8 +342,12 @@ export interface EventExtraItem {
   unit?: string;
   rate: number;
   total: number;
+  quantity?: number;
+  unitPrice?: number;
+  totalPrice?: number;
   note?: string;
 }
+export type EventInvoiceExtraItem = EventExtraItem;
 
 export interface EventInvoice {
   id: string;
@@ -293,6 +367,7 @@ export interface EventInvoice {
   transportCost: number;
   extraCharges: number;
   totalCost: number;
+  paidAmount?: number;
   
   // 🌟 Extended Final Bill Fields after Event Completion
   quotationId?: string;
@@ -314,6 +389,9 @@ export interface EventInvoice {
   notes?: string;
   qrData?: string;
   signatureUrl?: string;
+  fileUrl?: string;
+  fileName?: string;
+  files?: { name: string; url: string }[];
 }
 
 // Module 25: Event Gallery & Photo Management
@@ -344,6 +422,8 @@ export interface QuotationItem {
   unit: string;
   rate: number;
   total: number;
+  quantity?: number;
+  unitPrice?: number;
   note?: string;
 }
 
@@ -367,19 +447,31 @@ export interface EventQuotation {
   discount: number;
   grandTotal: number;
   advanceRequired: number;
+  advancePaid?: number;
   termsAndConditions?: string;
   status: 'Draft' | 'Sent' | 'Approved' | 'Converted';
   signatureUrl?: string;
   notes?: string;
+  files?: { name: string; url: string }[];
 }
 
 // Module 32: Decor Portfolio & Custom Category Management
+export interface PortfolioPhotoDetail {
+  id: string;
+  url: string;
+  title?: string;
+  description?: string;
+  estimatedCost?: number;
+  highlightTags?: string[];
+}
+
 export interface PortfolioItem {
   id: string;
   title: string;
   category: string;
   url: string;
   images?: string[]; // Multiple photos array for unlimited slideshow & galleries
+  photoDetails?: PortfolioPhotoDetail[]; // Per-photo specific details & budget
   eventName?: string;
   customerName?: string;
   date?: string;

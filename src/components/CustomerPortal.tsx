@@ -13,6 +13,7 @@ import {
   PenTool, 
   Eye, 
   CheckCircle,
+  CheckCircle2,
   Share2,
   Trash2,
   Upload,
@@ -41,13 +42,17 @@ import {
   Globe,
   ChevronDown,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Sliders,
+  Film
 } from 'lucide-react';
-import { Customer, EventEntry, RentalOutEntry, OnlineBooking, Attachment, UserRole, PortfolioItem } from '../types';
+import { Customer, EventEntry, RentalOutEntry, OnlineBooking, BookingRequestStatus, Attachment, UserRole, PortfolioItem, PortfolioPhotoDetail } from '../types';
 import { toBengaliNumber, formatCurrency } from '../utils';
 import ImageGalleryLightbox, { GalleryMediaItem } from './ImageGalleryLightbox';
-import { exportPresentationToPDF, exportStandaloneHTMLSlideshow } from '../utils/presentationExporter';
+import { exportPresentationToPDF, exportStandaloneHTMLSlideshow, exportPresentationToVideo, VideoExportResult } from '../utils/presentationExporter';
 import ShareModal from './ShareModal';
+import OnlineBookingSection from './OnlineBookingSection';
+import BookingRequestsInbox from './BookingRequestsInbox';
 
 interface CustomerPortalProps {
   customers: Customer[];
@@ -60,6 +65,8 @@ interface CustomerPortalProps {
   onAddOnlineBooking: (booking: Omit<OnlineBooking, 'id'>) => void;
   onApproveBooking: (bookingId: string) => void;
   onDeclineBooking: (bookingId: string) => void;
+  onUpdateBookingStatus?: (bookingId: string, status: BookingRequestStatus, adminNotes?: string) => void;
+  onDeleteBooking?: (bookingId: string) => void;
   onAddAttachment: (attachment: Omit<Attachment, 'id'>) => void;
   onDeleteAttachment: (id: string) => void;
   userRole: UserRole;
@@ -83,6 +90,8 @@ export default function CustomerPortal({
   onAddOnlineBooking,
   onApproveBooking,
   onDeclineBooking,
+  onUpdateBookingStatus,
+  onDeleteBooking,
   onAddAttachment,
   onDeleteAttachment,
   userRole,
@@ -111,6 +120,13 @@ export default function CustomerPortal({
   // Lightbox controllers
   const [portfolioLightboxIdx, setPortfolioLightboxIdx] = useState<number | null>(null);
   const [docLightboxIdx, setDocLightboxIdx] = useState<number | null>(null);
+  const [activeSlideItems, setActiveSlideItems] = useState<GalleryMediaItem[] | null>(null);
+
+  // Portal-level Video Export & Player Modal State
+  const [isExportingPortalVideo, setIsExportingPortalVideo] = useState(false);
+  const [portalVideoProgress, setPortalVideoProgress] = useState(0);
+  const [portalVideoStatus, setPortalVideoStatus] = useState('');
+  const [portalGeneratedVideo, setPortalGeneratedVideo] = useState<VideoExportResult | null>(null);
 
   // Multi-Category Filter State
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -131,6 +147,12 @@ export default function CustomerPortal({
   const [portfolioCategory, setPortfolioCategory] = useState(portfolioCategories[0] || 'বিবাহ ও সংবর্ধনা');
   const [portfolioUrl, setPortfolioUrl] = useState('');
   const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
+  const [portfolioPhotoDetails, setPortfolioPhotoDetails] = useState<PortfolioPhotoDetail[]>([]);
+  const [activePhotoDetailEditIdx, setActivePhotoDetailEditIdx] = useState<number | null>(null);
+  const [tempPhotoTitle, setTempPhotoTitle] = useState('');
+  const [tempPhotoCost, setTempPhotoCost] = useState<number | ''>('');
+  const [tempPhotoDescription, setTempPhotoDescription] = useState('');
+  const [tempPhotoTags, setTempPhotoTags] = useState('');
   const [newImageUrlInput, setNewImageUrlInput] = useState('');
   const [activeCardImageIdx, setActiveCardImageIdx] = useState<Record<string, number>>({});
   const [portfolioEventName, setPortfolioEventName] = useState('');
@@ -180,6 +202,7 @@ export default function CustomerPortal({
           category: item.category,
           url: item.url || itemImgs[0] || '',
           images: itemImgs,
+          photoDetails: item.photoDetails,
           eventName: item.eventName,
           customerName: item.customerName,
           date: item.date,
@@ -192,6 +215,66 @@ export default function CustomerPortal({
       });
   }, [portfolioItems, selectedCategories, searchQuery]);
 
+  // 🌟 Category-Isolated Slide Play (Cycles all photos within that category only)
+  const handlePlayCategorySlide = (item: GalleryMediaItem) => {
+    const categoryItems = portfolioItems
+      .filter(p => p.category === item.category)
+      .map(p => {
+        const itemImgs = (p.images && p.images.length > 0) ? p.images : (p.url ? [p.url] : []);
+        return {
+          id: p.id,
+          title: p.title,
+          category: p.category,
+          url: p.url || itemImgs[0] || '',
+          images: itemImgs,
+          photoDetails: p.photoDetails,
+          eventName: p.eventName,
+          customerName: p.customerName,
+          date: p.date,
+          description: p.description,
+          isVideo: p.isVideo,
+          estimatedCost: p.estimatedCost,
+          highlightTags: p.highlightTags,
+          colorPalette: p.colorPalette
+        };
+      });
+    
+    const targetIdx = Math.max(0, categoryItems.findIndex(ci => ci.id === item.id));
+    setActiveSlideItems(categoryItems.length > 0 ? categoryItems : [item]);
+    setPortfolioLightboxIdx(targetIdx);
+  };
+
+  // 🌟 Play slideshow for current filtered category list
+  const handlePlayFilteredSlide = () => {
+    if (filteredPortfolio.length === 0) return;
+    setActiveSlideItems(filteredPortfolio);
+    setPortfolioLightboxIdx(0);
+  };
+
+  // 🌟 Direct 1-Click Video Export from Portal Toolbar
+  const handleExportPortalVideo = async () => {
+    if (filteredPortfolio.length === 0) return;
+    setIsExportingPortalVideo(true);
+    setPortalVideoProgress(0);
+    setPortalVideoStatus('ছবি ও ট্রানজিশন প্রস্তুত হচ্ছে...');
+    try {
+      const result = await exportPresentationToVideo(filteredPortfolio, {
+        secondsPerSlide: 4,
+        companyName: 'রিত্তিকা ইভেন্ট ম্যানেজমেন্ট',
+        onProgress: (percent, statusText) => {
+          setPortalVideoProgress(percent);
+          setPortalVideoStatus(statusText);
+        }
+      });
+      setPortalGeneratedVideo(result);
+    } catch (err: any) {
+      console.error('Portal video export error:', err);
+      alert('ভিডিও তৈরিতে সমস্যা হয়েছে: ' + (err.message || 'অনুগ্রহ করে আবার চেষ্টা করুন।'));
+    } finally {
+      setIsExportingPortalVideo(false);
+    }
+  };
+
   // Open Portfolio Modal for Add
   const handleOpenAddPortfolio = () => {
     setEditingPortfolioItem(null);
@@ -199,6 +282,8 @@ export default function CustomerPortal({
     setPortfolioCategory(portfolioCategories[0] || 'বিবাহ ও সংবর্ধনা');
     setPortfolioUrl('');
     setPortfolioImages([]);
+    setPortfolioPhotoDetails([]);
+    setActivePhotoDetailEditIdx(null);
     setNewImageUrlInput('');
     setPortfolioEventName('');
     setPortfolioCustomerName('');
@@ -222,6 +307,8 @@ export default function CustomerPortal({
       : (item.url ? [item.url] : []);
     
     setPortfolioImages(existingImgs);
+    setPortfolioPhotoDetails(item.photoDetails || []);
+    setActivePhotoDetailEditIdx(null);
     setPortfolioUrl(item.url || existingImgs[0] || '');
     setNewImageUrlInput('');
     setPortfolioEventName(item.eventName || '');
@@ -232,6 +319,53 @@ export default function CustomerPortal({
     setPortfolioTags(item.highlightTags ? item.highlightTags.join(', ') : '');
     setPortfolioPalette(item.colorPalette ? item.colorPalette.join(', ') : '#D4AF37, #FFFFFF');
     setIsPortfolioModalOpen(true);
+  };
+
+  // Open inline sub-photo editor for a specific photo index
+  const handleOpenPhotoDetailEditor = (idx: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const photoUrl = portfolioImages[idx];
+    const existingDetail = portfolioPhotoDetails.find(p => p.url === photoUrl || p.id === `photo-${idx}`) || portfolioPhotoDetails[idx];
+    
+    setTempPhotoTitle(existingDetail?.title || '');
+    setTempPhotoCost(existingDetail?.estimatedCost !== undefined ? existingDetail.estimatedCost : '');
+    setTempPhotoDescription(existingDetail?.description || '');
+    setTempPhotoTags(existingDetail?.highlightTags ? existingDetail.highlightTags.join(', ') : '');
+    setActivePhotoDetailEditIdx(idx);
+  };
+
+  // Save specific sub-photo detailed info and budget
+  const handleSavePhotoDetail = (idx: number, e: React.FormEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const photoUrl = portfolioImages[idx];
+    const tagsArray = tempPhotoTags
+      .split(',')
+      .map(t => t.trim())
+      .filter(t => t.length > 0);
+
+    const updatedDetail: PortfolioPhotoDetail = {
+      id: `photo-${idx}-${Date.now()}`,
+      url: photoUrl,
+      title: tempPhotoTitle.trim() || undefined,
+      estimatedCost: tempPhotoCost !== '' ? Number(tempPhotoCost) : undefined,
+      description: tempPhotoDescription.trim() || undefined,
+      highlightTags: tagsArray.length > 0 ? tagsArray : undefined
+    };
+
+    setPortfolioPhotoDetails(prev => {
+      const next = [...prev];
+      const existingIdx = next.findIndex(p => p.url === photoUrl);
+      if (existingIdx >= 0) {
+        next[existingIdx] = updatedDetail;
+      } else {
+        next.push(updatedDetail);
+      }
+      return next;
+    });
+
+    setActivePhotoDetailEditIdx(null);
   };
 
   // Handle multiple photo uploads via file input
@@ -277,14 +411,18 @@ export default function CustomerPortal({
 
   // Remove individual photo from uploaded list
   const handleRemovePhoto = (indexToRemove: number) => {
+    const removedUrl = portfolioImages[indexToRemove];
     setPortfolioImages(prev => {
       const updated = prev.filter((_, idx) => idx !== indexToRemove);
-      // If we removed the cover image, pick the next available
       if (portfolioUrl === prev[indexToRemove]) {
         setPortfolioUrl(updated[0] || '');
       }
       return updated;
     });
+    setPortfolioPhotoDetails(prev => prev.filter(p => p.url !== removedUrl));
+    if (activePhotoDetailEditIdx === indexToRemove) {
+      setActivePhotoDetailEditIdx(null);
+    }
   };
 
   // Set photo as primary cover
@@ -319,6 +457,16 @@ export default function CustomerPortal({
       .map(p => p.trim())
       .filter(p => p.startsWith('#') || p.length > 0);
 
+    // Sync photo details with final images
+    const cleanedPhotoDetails: PortfolioPhotoDetail[] = finalImages.map((imgUrl, i) => {
+      const existing = portfolioPhotoDetails.find(p => p.url === imgUrl);
+      if (existing) return existing;
+      return {
+        id: `photo-${i}`,
+        url: imgUrl
+      };
+    });
+
     if (editingPortfolioItem) {
       onUpdatePortfolioItem({
         id: editingPortfolioItem.id,
@@ -326,6 +474,7 @@ export default function CustomerPortal({
         category: portfolioCategory,
         url: primaryCover,
         images: finalImages,
+        photoDetails: cleanedPhotoDetails,
         eventName: portfolioEventName.trim(),
         customerName: portfolioCustomerName.trim(),
         date: portfolioDate,
@@ -340,6 +489,7 @@ export default function CustomerPortal({
         category: portfolioCategory,
         url: primaryCover,
         images: finalImages,
+        photoDetails: cleanedPhotoDetails,
         eventName: portfolioEventName.trim(),
         customerName: portfolioCustomerName.trim(),
         date: portfolioDate,
@@ -527,22 +677,28 @@ export default function CustomerPortal({
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const file = files[0];
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (reader.result && typeof reader.result === 'string') {
-        onAddAttachment({
-          name: docName.trim() || file.name,
-          type: docType,
-          dataUrl: reader.result,
-          date: new Date().toISOString().split('T')[0],
-          relatedId: docRelatedId
-        });
-        alert('দলিল / ফাইলটি সফলভাবে সিস্টেমে সংরক্ষণ করা হয়েছে!');
-        setDocName('');
-      }
-    };
-    reader.readAsDataURL(file);
+    let count = 0;
+    Array.from(files).forEach((file: File, index: number) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (reader.result && typeof reader.result === 'string') {
+          onAddAttachment({
+            name: docName.trim() ? (files.length > 1 ? `${docName.trim()} (${index + 1})` : docName.trim()) : file.name,
+            type: docType,
+            dataUrl: reader.result,
+            date: new Date().toISOString().split('T')[0],
+            relatedId: docRelatedId
+          });
+          count++;
+          if (count === files.length) {
+            alert(`${files.length} টি ফাইল সফলভাবে সিস্টেমে সংরক্ষণ করা হয়েছে!`);
+            setDocName('');
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    if (e.target) e.target.value = '';
   };
 
   // WhatsApp click to send links generator
@@ -647,43 +803,58 @@ export default function CustomerPortal({
 
         <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
           
-          {/* Left: Brand, CEO, Address & Location Details */}
-          <div className="space-y-2.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 text-[10px] font-black uppercase px-3 py-1 rounded-full shadow-xs flex items-center gap-1">
-                👑 অফিসিয়াল ইভেন্ট পার্টনার
-              </span>
-              <span className="text-[11px] font-bold text-amber-200/90 flex items-center gap-1">
-                <Building2 size={13} className="text-amber-400" />
-                প্রতিষ্ঠানের নাম: <strong className="text-white">Rittika Event Management</strong>
-              </span>
+          {/* Left: Brand, Logo, CEO, Address & Location Details */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="h-20 sm:h-24 w-auto min-w-[130px] max-w-[240px] rounded-2xl bg-black border-2 border-amber-400/50 p-2 flex items-center justify-center shrink-0 shadow-lg shadow-black/60 overflow-hidden group relative">
+              <img 
+                src="/logo.png" 
+                alt="Rittika Event Management Logo" 
+                className="h-full w-auto max-h-full object-contain filter drop-shadow-md group-hover:scale-105 transition-transform" 
+                onError={(e) => {
+                  (e.currentTarget as HTMLElement).style.display = 'none';
+                  if (e.currentTarget.parentElement) {
+                    e.currentTarget.parentElement.innerHTML = '<span class="text-amber-300 text-xl font-black font-serif px-2">REM</span>';
+                  }
+                }}
+              />
             </div>
-
-            <div>
-              <h2 className="text-xl sm:text-2xl font-black uppercase text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-rose-200 to-purple-200 tracking-tight">
-                Rittika Event Management
-              </h2>
-              <p className="text-xs font-bold text-amber-300 flex items-center gap-1.5 mt-0.5">
-                <span>Owner / CEO:</span>
-                <span className="text-white bg-white/10 px-2 py-0.5 rounded-md border border-white/15">Robin Kumar</span>
-              </p>
-            </div>
-
-            {/* Address & Location Badges */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-medium text-slate-300 pt-1">
-              <div className="flex items-start gap-2 bg-white/5 border border-white/10 rounded-xl p-2.5">
-                <MapPin size={16} className="text-rose-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="text-[10px] font-bold uppercase text-slate-400 block">অফিসের ঠিকানা</span>
-                  <span className="text-slate-100 font-bold text-[11px]">রথপাড়া, ভেড়ামারা, কুষ্টিয়া, বাংলাদেশ — 7040</span>
-                </div>
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 text-[10px] font-black uppercase px-3 py-1 rounded-full shadow-xs flex items-center gap-1">
+                  👑 অফিসিয়াল ইভেন্ট পার্টনার
+                </span>
+                <span className="text-[11px] font-bold text-amber-200/90 flex items-center gap-1">
+                  <Building2 size={13} className="text-amber-400" />
+                  প্রতিষ্ঠানের নাম: <strong className="text-white">Rittika Event Management</strong>
+                </span>
               </div>
 
-              <div className="flex items-start gap-2 bg-white/5 border border-white/10 rounded-xl p-2.5">
-                <Globe size={16} className="text-teal-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="text-[10px] font-bold uppercase text-slate-400 block">লোকেশন ও বিভাগ</span>
-                  <span className="text-slate-100 font-bold text-[11px]">Bheramara, Khulna Division, Bangladesh</span>
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black uppercase text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-rose-200 to-purple-200 tracking-tight">
+                  Rittika Event Management
+                </h2>
+                <p className="text-xs font-bold text-amber-300 flex items-center gap-1.5 mt-0.5">
+                  <span>Owner / CEO:</span>
+                  <span className="text-white bg-white/10 px-2 py-0.5 rounded-md border border-white/15">Robin Kumar</span>
+                </p>
+              </div>
+
+              {/* Address & Location Badges */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-medium text-slate-300 pt-1">
+                <div className="flex items-start gap-2 bg-white/5 border border-white/10 rounded-xl p-2.5">
+                  <MapPin size={16} className="text-rose-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">অফিসের ঠিকানা</span>
+                    <span className="text-slate-100 font-bold text-[11px]">রথপাড়া, ভেড়ামারা, কুষ্টিয়া, বাংলাদেশ — 7040</span>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2 bg-white/5 border border-white/10 rounded-xl p-2.5">
+                  <Globe size={16} className="text-teal-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">লোকেশন ও বিভাগ</span>
+                    <span className="text-slate-100 font-bold text-[11px]">Bheramara, Khulna Division, Bangladesh</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -756,9 +927,9 @@ export default function CustomerPortal({
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Play Slideshow Button for Filtered Items */}
+              {/* Play Slideshow Button for Filtered Category Items */}
               <button
-                onClick={() => setPortfolioLightboxIdx(0)}
+                onClick={handlePlayFilteredSlide}
                 disabled={filteredPortfolio.length === 0}
                 className={`neo-btn px-4 py-2.5 text-xs font-black uppercase flex items-center gap-2 rounded-xl shadow-md cursor-pointer ${
                   filteredPortfolio.length === 0 
@@ -769,6 +940,17 @@ export default function CustomerPortal({
               >
                 <Play size={16} className="stroke-[3] fill-white" />
                 স্লাইড চালু করুন ({toBengaliNumber(filteredPortfolio.length)})
+              </button>
+
+              {/* 🌟 1-Click Cinematic Video Exporter & Downloader */}
+              <button
+                onClick={handleExportPortalVideo}
+                disabled={filteredPortfolio.length === 0 || isExportingPortalVideo}
+                className="neo-btn bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-600 hover:from-amber-500 hover:to-yellow-600 text-black px-3.5 py-2.5 text-xs font-black uppercase flex items-center gap-1.5 rounded-xl shadow-md cursor-pointer disabled:opacity-50 border border-yellow-300"
+                title="ফিল্টার করা ক্যাটাগরির ছবিগুলো দিয়ে ফুল HD সিনেমাটিক ভিডিও তৈরি ও ডাউনলোড করুন"
+              >
+                <Film size={15} className="stroke-[2.5]" />
+                {isExportingPortalVideo ? 'ভিডিও রেন্ডার হচ্ছে...' : 'সিনেমাটিক ভিডিও'}
               </button>
 
               {/* 🌟 1-Click Share Showcase Link & QR */}
@@ -969,7 +1151,7 @@ export default function CustomerPortal({
                       <img
                         src={activePhotoUrl}
                         alt={item.title}
-                        onClick={() => setPortfolioLightboxIdx(idx)}
+                        onClick={() => handlePlayCategorySlide(item)}
                         className="w-full h-full object-cover group-hover:scale-105 transition duration-500 cursor-pointer"
                       />
 
@@ -1070,7 +1252,7 @@ export default function CustomerPortal({
 
                       {/* Hover Overlay for Slide View */}
                       <div 
-                        onClick={() => setPortfolioLightboxIdx(idx)}
+                        onClick={() => handlePlayCategorySlide(item)}
                         className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-4 cursor-pointer"
                       >
                         <div className="bg-gradient-to-r from-amber-400 via-rose-500 to-purple-600 text-white px-3.5 py-1.5 text-xs font-black uppercase rounded-full flex items-center gap-1.5 shadow-lg transform group-hover:scale-105 transition">
@@ -1085,7 +1267,7 @@ export default function CustomerPortal({
                       <div>
                         <div className="flex items-start justify-between gap-2">
                           <h4 
-                            onClick={() => setPortfolioLightboxIdx(idx)}
+                            onClick={() => handlePlayCategorySlide(item)}
                             className="text-xs font-black text-slate-900 uppercase tracking-tight group-hover:text-purple-700 transition cursor-pointer"
                           >
                             {item.title}
@@ -1119,7 +1301,7 @@ export default function CustomerPortal({
                             <span className="text-slate-400">কাস্টম বাজেট</span>
                           )}
                           <button
-                            onClick={() => setPortfolioLightboxIdx(idx)}
+                            onClick={() => handlePlayCategorySlide(item)}
                             className="text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-rose-600 font-black uppercase flex items-center gap-1 text-[10px] hover:opacity-80 cursor-pointer"
                           >
                             স্লাইড প্লে ({toBengaliNumber(itemImages.length)}) ▶
@@ -1303,40 +1485,69 @@ export default function CustomerPortal({
                             </div>
 
                             {/* Clean, Non-Overlapping Action Toolbar */}
-                            <div className="p-1.5 bg-slate-100 border-t border-slate-300 flex items-center gap-1.5">
-                              {isCover ? (
-                                <span className="flex-1 text-[10px] font-black text-amber-700 bg-amber-100 py-1 px-1 rounded text-center truncate">
-                                  ✓ প্রচ্ছদ ছবি
-                                </span>
-                              ) : (
+                            <div className="p-1.5 bg-slate-100 border-t border-slate-300 flex flex-col gap-1">
+                              {/* Sub-photo custom title or budget badge if exists */}
+                              {(() => {
+                                const detail = portfolioPhotoDetails.find(p => p.url === imgUrl) || portfolioPhotoDetails[imgIdx];
+                                if (detail && (detail.title || detail.estimatedCost !== undefined)) {
+                                  return (
+                                    <div className="text-[9px] bg-slate-200 px-1.5 py-0.5 rounded flex items-center justify-between text-slate-800 font-bold truncate">
+                                      <span className="truncate">{detail.title || `ছবি ${toBengaliNumber(imgIdx + 1)}`}</span>
+                                      {detail.estimatedCost !== undefined && (
+                                        <span className="text-emerald-700 font-black ml-1">৳{toBengaliNumber(detail.estimatedCost)}</span>
+                                      )}
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
+
+                              <div className="flex items-center gap-1">
+                                {isCover ? (
+                                  <span className="flex-1 text-[10px] font-black text-amber-700 bg-amber-100 py-1 px-1 rounded text-center truncate">
+                                    ✓ প্রচ্ছদ
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleSetCoverPhoto(imgUrl);
+                                    }}
+                                    className="flex-1 py-1 px-1 bg-amber-400 hover:bg-amber-500 text-slate-950 text-[10px] font-black rounded uppercase cursor-pointer transition text-center truncate"
+                                    title="এই ছবিটিকে কার্ডের প্রচ্ছদ ছবি হিসেবে সেট করুন"
+                                  >
+                                    প্রচ্ছদ
+                                  </button>
+                                )}
+
+                                {/* Specific Photo Detail / Budget Edit Button */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleOpenPhotoDetailEditor(imgIdx, e)}
+                                  className="py-1 px-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black rounded cursor-pointer transition flex items-center gap-0.5 shrink-0"
+                                  title="এই নির্দিষ্ট ছবির আলাদা শিরোনাম, বাজেট ও বিবরণ যোগ করুন"
+                                >
+                                  <Sliders size={10} />
+                                  <span>বিবরণ</span>
+                                </button>
+
+                                {/* Explicit Delete Button */}
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    handleSetCoverPhoto(imgUrl);
+                                    handleRemovePhoto(imgIdx);
                                   }}
-                                  className="flex-1 py-1 px-1 bg-amber-400 hover:bg-amber-500 text-slate-950 text-[10px] font-black rounded uppercase cursor-pointer transition text-center truncate"
-                                  title="এই ছবিটিকে কার্ডের প্রচ্ছদ ছবি হিসেবে সেট করুন"
+                                  className="py-1 px-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black rounded cursor-pointer transition flex items-center gap-0.5 shrink-0"
+                                  title="এই ছবিটি তালিকা থেকে মুছে ফেলুন"
                                 >
-                                  প্রচ্ছদ বানান
+                                  <Trash2 size={10} />
+                                  <span>মুছুন</span>
                                 </button>
-                              )}
-
-                              {/* Explicit Delete Button */}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  handleRemovePhoto(imgIdx);
-                                }}
-                                className="py-1 px-2 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black rounded cursor-pointer transition flex items-center gap-1 shrink-0"
-                                title="এই ছবিটি তালিকা থেকে মুছে ফেলুন"
-                              >
-                                <Trash2 size={11} />
-                                <span>মুছুন</span>
-                              </button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -1425,6 +1636,104 @@ export default function CustomerPortal({
                 </button>
               </div>
             </form>
+
+            {/* 🌟 Nested Modal / Popover: Edit Individual Photo Detail & Budget */}
+            {activePhotoDetailEditIdx !== null && portfolioImages[activePhotoDetailEditIdx] && (
+              <div className="fixed inset-0 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 z-[70] animate-fadeIn">
+                <div className="bg-white border-4 border-black p-5 relative max-w-md w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] text-slate-900">
+                  <div className="flex items-center justify-between border-b-2 border-black pb-2 mb-3">
+                    <h4 className="text-xs font-black uppercase flex items-center gap-1.5 text-indigo-900">
+                      <Sliders size={15} className="text-indigo-600" />
+                      ছবি #{toBengaliNumber(activePhotoDetailEditIdx + 1)} এর আলাদা তথ্য ও বাজেট
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setActivePhotoDetailEditIdx(null)}
+                      className="p-1 border-2 border-black bg-white hover:bg-rose-100 text-black cursor-pointer"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  {/* Photo Preview */}
+                  <div className="flex items-center gap-3 bg-slate-100 p-2 border-2 border-slate-300 rounded mb-3">
+                    <img
+                      src={portfolioImages[activePhotoDetailEditIdx]}
+                      alt="Selected"
+                      className="w-16 h-12 object-cover border border-black rounded shrink-0"
+                    />
+                    <div className="text-[11px] font-bold text-slate-700">
+                      <p className="text-slate-950 font-black">নির্দিষ্ট ছবির কাস্টমাইজেশন</p>
+                      <p className="text-[10px] text-slate-500">
+                        এই তথ্যগুলো ভিডিও ও PDF ব্রোশিউরে এই ছবির স্লাইডে প্রদর্শিত হবে।
+                      </p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={(e) => handleSavePhotoDetail(activePhotoDetailEditIdx, e)} className="space-y-3 text-xs font-bold">
+                    <div>
+                      <label className="block mb-1 text-slate-800">ছবির আলাদা নাম / স্পট টাইটেল</label>
+                      <input
+                        type="text"
+                        placeholder="যেমন: মূল বিয়ের স্টেজ, ফটো বুথ কর্নার, এন্ট্রি আর্চগেট"
+                        value={tempPhotoTitle}
+                        onChange={(e) => setTempPhotoTitle(e.target.value)}
+                        className="w-full px-3 py-2 border-2 border-black bg-slate-50 focus:bg-white text-xs font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block mb-1 text-slate-800">এই অংশের বাজেট (টাকা ৳)</label>
+                      <input
+                        type="number"
+                        placeholder="যেমন: ২৫০০০"
+                        value={tempPhotoCost}
+                        onChange={(e) => setTempPhotoCost(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full px-3 py-2 border-2 border-black bg-slate-50 focus:bg-white text-xs font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block mb-1 text-slate-800">ছবির আলাদা হাইলাইটস (কমা দিয়ে লিখুন)</label>
+                      <input
+                        type="text"
+                        placeholder="যেমন: রোজ ফ্লাওয়ার, এলইডি প্যানেল, গোল্ডেন ফ্রেম"
+                        value={tempPhotoTags}
+                        onChange={(e) => setTempPhotoTags(e.target.value)}
+                        className="w-full px-3 py-2 border-2 border-black bg-slate-50 focus:bg-white text-xs font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block mb-1 text-slate-800">এই অংশের ডেকোরেশন বিবরণ</label>
+                      <textarea
+                        rows={2}
+                        placeholder="এই নির্দিষ্ট অংশের বিবরণ বা ম্যাটেরিয়ালসের তালিকা..."
+                        value={tempPhotoDescription}
+                        onChange={(e) => setTempPhotoDescription(e.target.value)}
+                        className="w-full px-3 py-2 border-2 border-black bg-slate-50 focus:bg-white text-xs font-medium"
+                      />
+                    </div>
+
+                    <div className="flex gap-2 pt-2 border-t-2 border-black">
+                      <button
+                        type="button"
+                        onClick={() => setActivePhotoDetailEditIdx(null)}
+                        className="flex-1 py-2 border-2 border-black bg-white hover:bg-slate-100 font-black cursor-pointer uppercase text-xs"
+                      >
+                        বাতিল
+                      </button>
+                      <button
+                        type="submit"
+                        className="flex-1 py-2 border-2 border-black bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-xs cursor-pointer shadow-sm"
+                      >
+                        সংরক্ষণ করুন
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1475,221 +1784,27 @@ export default function CustomerPortal({
         </div>
       )}
 
-      {/* 1. Online Booking Form Simulator */}
+      {/* 1. Online Booking Form Simulator (Client View) */}
       {activeTab === 'booking-form' && (
-        <div className="bg-white border-4 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-6">
-          <div className="border-b-3 border-black pb-3">
-            <h3 className="text-base font-black text-black uppercase flex items-center gap-2">
-              <Briefcase size={20} className="text-amber-500 stroke-[2.5]" />
-              অনলাইন ইভেন্ট ও ডেকোরেশন বুকিং ফর্ম (Client View)
-            </h3>
-            <p className="text-xs font-bold text-slate-700 mt-1">
-              গ্রাহক এই ফর্মটি পূরণ করে অনলাইন থেকে সরাসরি বুকিং রিকোয়েস্ট পাঠাতে পারেন।
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Form Column */}
-            <form onSubmit={handleBookingSubmit} className="lg:col-span-2 space-y-4 text-xs font-bold text-black">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block mb-1 font-black">আপনার নাম *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="পুরো নাম লিখুন"
-                    value={custName}
-                    onChange={(e) => setCustName(e.target.value)}
-                    className="w-full px-3 py-2 border-2 border-black bg-slate-50 focus:bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block mb-1 font-black">মোবাইল নম্বর *</label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="01XXXXXXXXX"
-                    value={custMobile}
-                    onChange={(e) => setCustMobile(e.target.value)}
-                    className="w-full px-3 py-2 border-2 border-black bg-slate-50 focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block mb-1 font-black">ইভেন্টের তারিখ *</label>
-                  <input
-                    type="date"
-                    required
-                    value={eventDate}
-                    onChange={(e) => setEventDate(e.target.value)}
-                    className="w-full px-3 py-2 border-2 border-black bg-slate-50 focus:bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block mb-1 font-black">অনুষ্ঠানের ধরন</label>
-                  <select
-                    value={eventType}
-                    onChange={(e) => setEventType(e.target.value)}
-                    className="w-full px-3 py-2 border-2 border-black bg-white"
-                  >
-                    <option value="Wedding (বিয়ে)">বিবাহ ও সংবর্ধনা (Wedding)</option>
-                    <option value="Haldi (গায়ে হলুদ)">গায়ে হলুদ ও মেহেন্দি (Haldi)</option>
-                    <option value="Birthday (জন্মদিন)">জন্মদিন ও পার্টি (Birthday)</option>
-                    <option value="Corporate (কর্পোরেট)">কর্পোরেট ইভেন্ট ও সেমিনার</option>
-                    <option value="Cultural (সাংস্কৃতিক)">সাংস্কৃতিক উৎসব / মেলা</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block mb-1 font-black">অতিথি সংখ্যা (আনুমানিক)</label>
-                  <input
-                    type="number"
-                    min="20"
-                    max="5000"
-                    value={guestCount}
-                    onChange={(e) => setGuestCount(Number(e.target.value))}
-                    className="w-full px-3 py-2 border-2 border-black bg-slate-50 focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block mb-1 font-black">ভেন্যুর ঠিকানা ও লোকেশন *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="যেমন: সেনা কুঞ্জ, মিরপুর বা কমিউনিটি সেন্টার"
-                  value={eventLoc}
-                  onChange={(e) => setEventLoc(e.target.value)}
-                  className="w-full px-3 py-2 border-2 border-black bg-slate-50 focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block mb-1 font-black">বিশেষ কোনো চাহিদা বা ডেকোরেশন নোট</label>
-                <textarea
-                  rows={3}
-                  placeholder="স্টেজের থিম, কালার কম্বিনেশন বা লাইটিং এর বিশেষ কোনো চাহিদা থাকলে লিখুন..."
-                  value={bookingNote}
-                  onChange={(e) => setBookingNote(e.target.value)}
-                  className="w-full px-3 py-2 border-2 border-black bg-slate-50 focus:bg-white"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="neo-btn bg-yellow-400 hover:bg-yellow-500 text-black px-6 py-3 font-black text-xs uppercase flex items-center justify-center gap-2 shadow-[4px_4px_0px_0px_#000000] cursor-pointer w-full sm:w-auto"
-              >
-                <Send size={16} />
-                অনলাইন বুকিং আবেদন জমা দিন
-              </button>
-            </form>
-
-            {/* AI Estimator Side Panel */}
-            <div className="bg-slate-50 border-3 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] space-y-4">
-              <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-teal-100 border-2 border-black shadow-[1px_1px_0px_0px_#000000]">
-                এআই এস্টিমেটর (AI Estimator)
-              </span>
-              
-              <h4 className="text-xs font-black text-slate-700 uppercase">রিত্তিকা অটো ইভেন্ট বাজেট এস্টিমেটর</h4>
-              
-              <div className="border-t-2 border-b-2 border-dashed border-black/20 py-4 space-y-2">
-                <div className="flex justify-between text-xs font-bold">
-                  <span>ভেন্যু ধরণ:</span>
-                  <span>{eventType}</span>
-                </div>
-                <div className="flex justify-between text-xs font-bold">
-                  <span>অতিথি সংখ্যা:</span>
-                  <span className="font-sans font-black">{toBengaliNumber(guestCount)} জন</span>
-                </div>
-              </div>
-
-              <div>
-                <span className="text-[10px] text-slate-500 block uppercase font-bold">আনুমানিক ডেকোরেশন বাজেট:</span>
-                <span className="text-3xl font-black text-indigo-700 font-sans tracking-tight">
-                  {formatCurrency(estimatedBudget)}
-                </span>
-              </div>
-
-              <div className="p-3 bg-indigo-50 border-2 border-indigo-600 text-[10px] text-indigo-900 leading-normal font-sans">
-                * এটি একটি প্রিলিমিনারি এস্টিমেট। মালামালের পরিমাণ ও বিশেষ রিকোয়ারমেন্টের ওপর ভিত্তি করে চূড়ান্ত বাজেট নির্ধারিত হবে।
-              </div>
-            </div>
-          </div>
-        </div>
+        <OnlineBookingSection 
+          onAddOnlineBooking={onAddOnlineBooking}
+        />
       )}
 
       {/* 2. Online Booking Requests Inbox (Admin / Staff Only) */}
       {activeTab === 'inbox' && canEdit && (
-        <div className="bg-white border-4 border-black p-5 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-          <h3 className="text-sm font-black text-black border-b-2 border-black pb-3 mb-4 flex items-center gap-1.5">
-            <Send size={16} className="text-amber-500 stroke-[2.5]" />
-            অনলাইন বুকিং আবেদন ইনবক্স
-          </h3>
-
-          <div className="space-y-4">
-            {onlineBookings.length === 0 ? (
-              <div className="py-12 text-center text-xs font-bold text-slate-500 uppercase">
-                কোন বুকিং আবেদন পাওয়া যায়নি।
-              </div>
-            ) : (
-              [...onlineBookings].reverse().map(b => (
-                <div key={b.id} className="border-2 border-black p-4 bg-slate-50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-[2px_2px_0px_0px_#000000]">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-black text-black">{b.customerName}</span>
-                      <span className={`px-1.5 py-0.5 border border-black text-[9px] font-black uppercase ${
-                        b.status === 'Pending' ? 'bg-amber-100 text-amber-800' :
-                        b.status === 'Approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                      }`}>
-                        {b.status === 'Pending' ? 'পর্যালোচনাধীন' :
-                         b.status === 'Approved' ? 'অনুমোদিত' : 'প্রত্যাখ্যাত'}
-                      </span>
-                    </div>
-                    <span className="block text-xs font-black text-slate-600 font-mono">মোবাইল: {toBengaliNumber(b.mobile)}</span>
-                    <div className="flex flex-wrap gap-2 text-[10px] pt-1">
-                      <span className="px-1.5 py-0.5 bg-slate-200 text-black font-sans border border-black/10">
-                        ভেন্যু: {b.location}
-                      </span>
-                      <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 font-sans border border-blue-200">
-                        তারিখ: {toBengaliNumber(b.date)}
-                      </span>
-                      <span className="px-1.5 py-0.5 bg-teal-100 text-teal-800 font-sans border border-teal-200">
-                        গেস্ট: {toBengaliNumber(b.guestCount)} জন
-                      </span>
-                    </div>
-                    {b.note && <p className="text-[10px] text-slate-500 italic mt-1">গ্রাহক নোট: "{b.note}"</p>}
-                  </div>
-
-                  <div className="flex flex-col items-end gap-2 w-full md:w-auto">
-                    <div className="text-right font-sans">
-                      <span className="text-[10px] text-slate-500 block font-bold">এস্টিমেটেড বাজেট:</span>
-                      <span className="text-base font-black text-indigo-700">{formatCurrency(b.estimatedBudget)}</span>
-                    </div>
-                    
-                    {b.status === 'Pending' && canEdit && (
-                      <div className="flex gap-1.5 w-full md:w-auto">
-                        <button
-                          onClick={() => onApproveBooking(b.id)}
-                          className="flex-1 md:flex-none px-3 py-1 bg-emerald-400 text-black border-2 border-black text-[10px] font-black uppercase cursor-pointer shadow-[1px_1px_0px_0px_#000000]"
-                        >
-                          অনুমোদন (Approve)
-                        </button>
-                        <button
-                          onClick={() => onDeclineBooking(b.id)}
-                          className="flex-1 md:flex-none px-3 py-1 bg-rose-300 text-black border-2 border-black text-[10px] font-black uppercase cursor-pointer shadow-[1px_1px_0px_0px_#000000]"
-                        >
-                          বাতিল (Decline)
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        <BookingRequestsInbox
+          onlineBookings={onlineBookings}
+          onUpdateBookingStatus={onUpdateBookingStatus || ((bookingId, status, notes) => {
+            if (status === 'Confirmed') onApproveBooking(bookingId);
+            else if (status === 'Cancelled') onDeclineBooking(bookingId);
+          })}
+          onApproveBooking={onApproveBooking}
+          onDeclineBooking={onDeclineBooking}
+          onDeleteBooking={onDeleteBooking}
+          canEdit={canEdit}
+          userRole={userRole}
+        />
       )}
 
       {/* 3. Customer Portal Simulator (Admin / Staff Only) */}
@@ -1947,6 +2062,7 @@ export default function CustomerPortal({
                       <input
                         type="file"
                         accept="image/*,.pdf"
+                        multiple
                         onChange={handleFileUpload}
                         className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                       />
@@ -2049,12 +2165,15 @@ export default function CustomerPortal({
         </div>
       )}
 
-      {/* Lightbox for Portfolio Showcase (Plays Filtered Items) */}
+      {/* Lightbox for Portfolio Showcase (Plays Filtered/Category-Isolated Items) */}
       <ImageGalleryLightbox
         isOpen={portfolioLightboxIdx !== null}
-        onClose={() => setPortfolioLightboxIdx(null)}
+        onClose={() => {
+          setPortfolioLightboxIdx(null);
+          setActiveSlideItems(null);
+        }}
         initialIndex={portfolioLightboxIdx ?? 0}
-        items={filteredPortfolio}
+        items={activeSlideItems && activeSlideItems.length > 0 ? activeSlideItems : filteredPortfolio}
         title="রিত্তিকা ইভেন্ট ম্যানেজমেন্ট পোর্টফোলিও শোকেস"
         canDelete={isAdmin}
         onDelete={(id) => {
@@ -2074,6 +2193,106 @@ export default function CustomerPortal({
           onDeleteAttachment(id);
         }}
       />
+
+      {/* 🎬 Portal Video Rendering Progress Overlay */}
+      {isExportingPortalVideo && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[120] flex items-center justify-center p-4">
+          <div className="bg-slate-900 border-2 border-amber-400/40 p-6 sm:p-8 rounded-2xl max-w-md w-full text-center shadow-2xl text-white space-y-4 animate-scaleUp">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center mx-auto shadow-lg animate-pulse">
+              <Film size={28} className="text-white" />
+            </div>
+            <div>
+              <h3 className="text-base sm:text-lg font-black uppercase text-amber-300">
+                সিনেমাটিক ভিডিও তৈরি হচ্ছে
+              </h3>
+              <p className="text-xs text-slate-300 font-medium mt-1">
+                {portalVideoStatus || 'ছবি ও ট্রানজিশন প্রস্তুত হচ্ছে...'}
+              </p>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden border border-slate-700">
+              <div 
+                className="bg-gradient-to-r from-amber-400 via-rose-500 to-purple-600 h-full transition-all duration-300 rounded-full"
+                style={{ width: `${Math.max(5, portalVideoProgress)}%` }}
+              />
+            </div>
+            <div className="text-xs font-mono font-bold text-amber-400">
+              {toBengaliNumber(portalVideoProgress)}% সম্পন্ন
+            </div>
+            <p className="text-[11px] text-slate-400">
+              ক্যানভাসে ফুল HD রেজোলিউশনে ছবিগুলো সিনেমাটিক ইফেক্টসহ রেন্ডার হচ্ছে...
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* 🎬 Portal Generated Video Preview & Download Modal */}
+      {portalGeneratedVideo && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[120] flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-slate-950 border border-white/20 p-5 sm:p-6 rounded-2xl max-w-2xl w-full text-white shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/15 pb-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={20} className="text-emerald-400" />
+                <h3 className="text-sm sm:text-base font-black uppercase text-amber-300">
+                  সিনেমাটিক ভিডিও তৈরি সম্পন্ন!
+                </h3>
+              </div>
+              <button
+                onClick={() => setPortalGeneratedVideo(null)}
+                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Video Player */}
+            <div className="rounded-xl overflow-hidden bg-black border border-white/15 aspect-video flex items-center justify-center">
+              <video 
+                src={portalGeneratedVideo.blobUrl} 
+                controls 
+                autoPlay 
+                playsInline
+                className="w-full h-full object-contain"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-between gap-3 pt-1 flex-wrap">
+              <div className="text-xs text-slate-300">
+                <span>ফাইলের আকার: </span>
+                <span className="font-bold text-amber-300 font-mono">
+                  {(portalGeneratedVideo.sizeBytes / (1024 * 1024)).toFixed(2)} MB
+                </span>
+                <span className="ml-2 text-slate-400">({portalGeneratedVideo.fileName})</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPortalGeneratedVideo(null)}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  বন্ধ করুন
+                </button>
+                <button
+                  onClick={() => {
+                    const a = document.createElement('a');
+                    a.href = portalGeneratedVideo.blobUrl;
+                    a.download = portalGeneratedVideo.fileName;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                  }}
+                  className="px-5 py-2 bg-gradient-to-r from-amber-400 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 rounded-xl text-xs font-black uppercase flex items-center gap-1.5 shadow-lg cursor-pointer hover:scale-105 transition"
+                >
+                  <Download size={15} className="stroke-[2.5]" />
+                  ভিডিও ডাউনলোড করুন
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 🌐 Live Showcase & Portal Share Modal */}
       <ShareModal

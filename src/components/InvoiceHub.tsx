@@ -4,13 +4,34 @@ import {
   Folder, FileText, Search, Plus, Upload, Download, Printer, Share2, 
   Trash2, Eye, ShieldCheck, Mail, Send, Check, RefreshCw, Layers, CheckSquare, 
   DollarSign, FileSpreadsheet, Sparkles, PenTool, X, ChevronRight, User, Calendar,
-  Calculator, Tag, CheckCircle2, ArrowRight, Clock, Edit3, AlertCircle, Coins, PlusCircle, QrCode as QrIcon
+  Calculator, Tag, CheckCircle2, ArrowRight, Clock, Edit3, AlertCircle, Coins, PlusCircle, 
+  QrCode as QrIcon, Stamp, SlidersHorizontal, Paperclip, Image as ImageIcon, Copy,
+  ExternalLink, FileCheck, CheckCheck, Loader2, Smartphone
 } from 'lucide-react';
 import { 
   StockItem, Customer, Supplier, PurchaseEntry, SalesEntry, RentalOutEntry, EventEntry, Attachment,
   PurchaseInvoice, SalesInvoice, RentalInvoice, EventInvoice, EventQuotation, QuotationItem, EventExtraItem
 } from '../types';
 import { formatCurrency, toBengaliNumber } from '../utils';
+import { 
+  CompanyOfficialSeal, 
+  StatusRubberStamp, 
+  SealColorTheme, 
+  StatusStampType 
+} from './DigitalSealStamp';
+import DigitalSignatureModal, { 
+  SignatureSettings, 
+  loadSavedSignatureSettings, 
+  saveSignatureSettings, 
+  DEFAULT_SIGNATURE_SETTINGS 
+} from './DigitalSignatureModal';
+import { InvoiceEditModal, InvoiceEditTarget } from './InvoiceEditModal';
+import { 
+  downloadInvoicePDF, 
+  downloadInvoiceImage, 
+  shareInvoiceFileNative, 
+  getInvoiceFileName 
+} from '../utils/invoicePdfExporter';
 
 interface InvoiceHubProps {
   purchases: PurchaseEntry[];
@@ -25,15 +46,19 @@ interface InvoiceHubProps {
   onDeleteAttachment: (id: string) => void;
   purchaseInvoices: PurchaseInvoice[];
   onAddPurchaseInvoice: (inv: Omit<PurchaseInvoice, 'id'>) => void;
+  onUpdatePurchaseInvoice?: (id: string, inv: Omit<PurchaseInvoice, 'id'>) => void;
   onDeletePurchaseInvoice: (id: string) => void;
   salesInvoices: SalesInvoice[];
   onAddSalesInvoice: (inv: Omit<SalesInvoice, 'id'>) => void;
+  onUpdateSalesInvoice?: (id: string, inv: Omit<SalesInvoice, 'id'>) => void;
   onDeleteSalesInvoice: (id: string) => void;
   rentalInvoices: RentalInvoice[];
   onAddRentalInvoice: (inv: Omit<RentalInvoice, 'id'>) => void;
+  onUpdateRentalInvoice?: (id: string, inv: Omit<RentalInvoice, 'id'>) => void;
   onDeleteRentalInvoice: (id: string) => void;
   eventInvoices: EventInvoice[];
   onAddEventInvoice: (inv: Omit<EventInvoice, 'id'>) => void;
+  onUpdateEventInvoice?: (id: string, inv: Omit<EventInvoice, 'id'>) => void;
   onDeleteEventInvoice: (id: string) => void;
   quotations: EventQuotation[];
   onAddQuotation: (quotation: Omit<EventQuotation, 'id'>) => void;
@@ -57,15 +82,19 @@ export default function InvoiceHub({
   onDeleteAttachment,
   purchaseInvoices,
   onAddPurchaseInvoice,
+  onUpdatePurchaseInvoice,
   onDeletePurchaseInvoice,
   salesInvoices,
   onAddSalesInvoice,
+  onUpdateSalesInvoice,
   onDeleteSalesInvoice,
   rentalInvoices,
   onAddRentalInvoice,
+  onUpdateRentalInvoice,
   onDeleteRentalInvoice,
   eventInvoices,
   onAddEventInvoice,
+  onUpdateEventInvoice,
   onDeleteEventInvoice,
   quotations,
   onAddQuotation,
@@ -75,16 +104,36 @@ export default function InvoiceHub({
 }: InvoiceHubProps) {
   
   // General State
-  const [activeTab, setActiveTab] = useState<'document-center' | 'quotations' | 'purchase-invoices' | 'sales-invoices' | 'rental-invoices' | 'event-invoices'>('quotations');
+  const [activeTab, setActiveTab] = useState<'all-saved-invoices' | 'document-center' | 'quotations' | 'purchase-invoices' | 'sales-invoices' | 'rental-invoices' | 'event-invoices'>('all-saved-invoices');
   const [selectedFolder, setSelectedFolder] = useState<FolderType>('quotations');
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddPurchaseOpen, setIsAddPurchaseOpen] = useState(false);
   const [isSignOpen, setIsSignOpen] = useState(false);
+  const [editingTarget, setEditingTarget] = useState<InvoiceEditTarget | null>(null);
+  const [archiveFilterType, setArchiveFilterType] = useState<'all' | 'quotations' | 'event' | 'sales' | 'rental' | 'purchase'>('all');
+  const [archiveFilterStatus, setArchiveFilterStatus] = useState<'all' | 'paid' | 'due' | 'partial' | 'converted'>('all');
+  const [pFiles, setPFiles] = useState<{ name: string; url: string }[]>([]);
   
   // Sharing trigger modals
-  const [sharingInvoice, setSharingInvoice] = useState<{ id: string; type: 'sales' | 'rental' | 'event' | 'quotations'; mobile: string; name: string } | null>(null);
+  const [sharingInvoice, setSharingInvoice] = useState<{ 
+    id: string; 
+    type: 'sales' | 'rental' | 'event' | 'quotations' | 'purchase'; 
+    mobile: string; 
+    email?: string;
+    name: string;
+    date?: string;
+    total?: number;
+    paid?: number;
+    due?: number;
+    rawData?: any;
+  } | null>(null);
   const [shareMethod, setShareMethod] = useState<'whatsapp' | 'email'>('whatsapp');
   const [shareTarget, setShareTarget] = useState('');
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [isDownloadingImg, setIsDownloadingImg] = useState(false);
+  const [downloadSuccessToast, setDownloadSuccessToast] = useState<string | null>(null);
+  const [copiedLinkToast, setCopiedLinkToast] = useState(false);
+  const [isSharingNative, setIsSharingNative] = useState(false);
   
   // Active selected invoice for full-screen preview / printing / downloading
   const [previewInvoice, setPreviewInvoice] = useState<{
@@ -93,11 +142,46 @@ export default function InvoiceHub({
     data: any;
   } | null>(null);
 
-  // Digital signature configuration
-  const [typedSignature, setTypedSignature] = useState('রিত্তিকা ইভেন্ট ম্যানেজমেন্ট');
-  const [selectedSigFont, setSelectedSigFont] = useState<'font-serif' | 'font-sans' | 'font-mono'>('font-serif');
-  const [canvasSignature, setCanvasSignature] = useState<string | null>(null);
-  const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Digital signature & stamp configuration
+  const [sigSettings, setSigSettings] = useState<SignatureSettings>(loadSavedSignatureSettings);
+  const [previewStampOverride, setPreviewStampOverride] = useState<'auto' | StatusStampType | 'none'>('auto');
+  const [previewStampColor, setPreviewStampColor] = useState<SealColorTheme>('royal-blue');
+  const [previewSealEnabled, setPreviewSealEnabled] = useState<boolean>(true);
+
+  // Helper to extract active signature image URL (if drawing or upload mode)
+  const getActiveSignatureUrl = () => {
+    if (sigSettings.mode === 'draw' && sigSettings.drawnDataUrl) return sigSettings.drawnDataUrl;
+    if (sigSettings.mode === 'upload' && sigSettings.uploadedDataUrl) return sigSettings.uploadedDataUrl;
+    return undefined;
+  };
+
+  // Helper to resolve status stamp for previewed invoice
+  const getResolvedStatusStamp = (inv: { type: string; data: any }): StatusStampType | null => {
+    if (previewStampOverride === 'none' || !sigSettings.showStatusStamp) return null;
+    if (previewStampOverride !== 'auto') return previewStampOverride;
+    
+    if (inv.type === 'quotations') {
+      if (inv.data.status === 'Converted') return 'approved';
+      if (inv.data.budgetType === 'Estimated') return 'estimate';
+      if (inv.data.budgetType === 'Fixed') return 'fixed';
+      return 'estimate';
+    }
+    if (inv.type === 'event') {
+      if (inv.data.baseBudget !== undefined) return 'final';
+      if (inv.data.paymentStatus === 'Paid' || inv.data.dueAmount === 0) return 'paid';
+      return 'unpaid';
+    }
+    if (inv.type === 'sales') {
+      return 'paid';
+    }
+    if (inv.type === 'rental') {
+      return (inv.data.dueAmount === 0 || inv.data.paidAmount >= inv.data.totalBill) ? 'paid' : 'unpaid';
+    }
+    if (inv.type === 'purchase') {
+      return inv.data.paymentStatus === 'Paid' ? 'paid' : 'unpaid';
+    }
+    return 'final';
+  };
 
   // Dynamic QR Code generation for current preview invoice
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -107,6 +191,10 @@ export default function InvoiceHub({
       setQrDataUrl('');
       return;
     }
+    // Sync preview seal state
+    setPreviewSealEnabled(sigSettings.showCompanySeal);
+    setPreviewStampColor(sigSettings.statusStampColorTheme || 'royal-blue');
+
     const invData = previewInvoice.data;
     const invNo = previewInvoice.type === 'quotations' 
       ? invData.quotationNo 
@@ -140,7 +228,7 @@ export default function InvoiceHub({
     })
       .then(url => setQrDataUrl(url))
       .catch(err => console.error('Failed to generate invoice QR code:', err));
-  }, [previewInvoice]);
+  }, [previewInvoice, sigSettings]);
 
   // 📝 MODULE 31: EVENT BUDGET QUOTATION BUILDER STATE
   const [isCreatingQuotation, setIsCreatingQuotation] = useState(false);
@@ -264,6 +352,7 @@ export default function InvoiceHub({
   const [customSalePaid, setCustomSalePaid] = useState(0);
   const [customSalePaymentMethod, setCustomSalePaymentMethod] = useState('নগদ (Cash)');
   const [customSaleNote, setCustomSaleNote] = useState('');
+  const [customSaleFiles, setCustomSaleFiles] = useState<{ name: string; url: string }[]>([]);
 
   // Auto Generate / Custom Rental Invoice Setup
   const [rentalInvoiceMode, setRentalInvoiceMode] = useState<'existing' | 'custom'>('existing');
@@ -290,6 +379,7 @@ export default function InvoiceHub({
   const [customRentalPaid, setCustomRentalPaid] = useState(0);
   const [customRentalPaymentMethod, setCustomRentalPaymentMethod] = useState('নগদ (Cash)');
   const [customRentalNote, setCustomRentalNote] = useState('');
+  const [customRentalFiles, setCustomRentalFiles] = useState<{ name: string; url: string }[]>([]);
 
   // Auto Generate / Custom Event Invoice Setup
   const [eventInvoiceMode, setEventInvoiceMode] = useState<'existing' | 'custom'>('existing');
@@ -313,61 +403,54 @@ export default function InvoiceHub({
   const [customEventPaid, setCustomEventPaid] = useState(0);
   const [customEventPaymentMethod, setCustomEventPaymentMethod] = useState('নগদ (Cash)');
   const [customEventNotes, setCustomEventNotes] = useState('');
+  const [customEventFiles, setCustomEventFiles] = useState<{ name: string; url: string }[]>([]);
 
-  // Handle Canvas Drawing for Digital Signature
-  const [isDrawing, setIsDrawing] = useState(false);
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = sigCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#000000';
-    const rect = canvas.getBoundingClientRect();
-    ctx.beginPath();
-    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
-    setIsDrawing(true);
-  };
+  // Quotation & Final Bill Multi-File States
+  const [qFiles, setQFiles] = useState<{ name: string; url: string }[]>([]);
+  const [finalInvFiles, setFinalInvFiles] = useState<{ name: string; url: string }[]>([]);
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
-    const canvas = sigCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
-    ctx.stroke();
-  };
-
-  const stopDrawing = () => {
-    setIsDrawing(false);
-    const canvas = sigCanvasRef.current;
-    if (canvas) {
-      setCanvasSignature(canvas.toDataURL());
-    }
-  };
-
-  const clearCanvas = () => {
-    const canvas = sigCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setCanvasSignature(null);
-  };
-
-  // Upload supplier purchase invoice base64
-  const handlePurchaseFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setPFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setPBase64File(event.target?.result as string);
+  // Generic multi-file upload handler generator
+  const createMultiFileHandler = (setter: React.Dispatch<React.SetStateAction<{ name: string; url: string }[]>>) => {
+    return (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      Array.from(files).forEach((file: File) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (typeof event.target?.result === 'string') {
+            setter(prev => [...prev, { name: file.name, url: event.target!.result as string }]);
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+      if (e.target) e.target.value = '';
     };
-    reader.readAsDataURL(file);
+  };
+
+  const handleSalesFileUpload = createMultiFileHandler(setCustomSaleFiles);
+  const handleRentalFileUpload = createMultiFileHandler(setCustomRentalFiles);
+  const handleEventFileUpload = createMultiFileHandler(setCustomEventFiles);
+  const handleQuotationFileUpload = createMultiFileHandler(setQFiles);
+  const handleFinalInvFileUpload = createMultiFileHandler(setFinalInvFiles);
+
+  // Upload supplier purchase invoice base64 (Supports multiple files simultaneously)
+  const handlePurchaseFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    Array.from(files).forEach((file: File) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (typeof event.target?.result === 'string') {
+          const res = event.target.result;
+          setPFiles(prev => [...prev, { name: file.name, url: res }]);
+          setPBase64File(res);
+          setPFileName(file.name);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    if (e.target) e.target.value = '';
   };
 
   const handleCreatePurchaseInvoice = (e: React.FormEvent) => {
@@ -389,8 +472,9 @@ export default function InvoiceHub({
       unitPrice: Number(pUnitPrice),
       totalAmount: Number(pQty) * Number(pUnitPrice),
       paymentStatus: pPaymentStatus,
-      fileUrl: pBase64File || undefined,
-      fileName: pFileName || undefined
+      fileUrl: pBase64File || (pFiles.length > 0 ? pFiles[0].url : undefined),
+      fileName: pFileName || (pFiles.length > 0 ? pFiles[0].name : undefined),
+      files: pFiles.length > 0 ? pFiles : undefined
     });
 
     // Reset fields
@@ -403,6 +487,7 @@ export default function InvoiceHub({
     setPUnitPrice(0);
     setPBase64File(null);
     setPFileName('');
+    setPFiles([]);
     setIsAddPurchaseOpen(false);
   };
 
@@ -589,7 +674,8 @@ export default function InvoiceHub({
       advanceRequired: Number(qAdvanceRequired) || 0,
       termsAndConditions: qTerms,
       notes: qNotes,
-      signatureUrl: canvasSignature || undefined
+      files: qFiles.length > 0 ? qFiles : undefined,
+      signatureUrl: getActiveSignatureUrl()
     };
 
     if (editingQuotationId && onUpdateQuotation) {
@@ -610,6 +696,7 @@ export default function InvoiceHub({
       });
     }
 
+    setQFiles([]);
     setIsCreatingQuotation(false);
     setEditingQuotationId(null);
   };
@@ -658,7 +745,7 @@ export default function InvoiceHub({
       discount: salesDiscount,
       grandTotal: grand,
       qrData: `InvoiceNo: SAL-${Date.now().toString().slice(-6)}\nCustomer: ${customer ? customer.name : 'Unknown'}\nTotal: ${grand} BDT`,
-      signatureUrl: canvasSignature || undefined
+      signatureUrl: getActiveSignatureUrl()
     });
 
     setSelectedSaleId('');
@@ -694,8 +781,12 @@ export default function InvoiceHub({
       subtotal,
       discount: Number(customSaleDiscount || 0),
       grandTotal: grand,
+      paymentStatus: (customSalePaid >= grand) ? 'Paid' : (customSalePaid > 0 ? 'Partial' : 'Due'),
+      paymentMethod: customSalePaymentMethod,
+      notes: customSaleNote,
+      files: customSaleFiles.length > 0 ? customSaleFiles : undefined,
       qrData: `InvoiceNo: SAL-${Date.now().toString().slice(-6)}\nCustomer: ${customSaleCustomerName}\nTotal: ${grand} BDT`,
-      signatureUrl: canvasSignature || undefined
+      signatureUrl: getActiveSignatureUrl()
     });
 
     // Reset fields
@@ -708,6 +799,7 @@ export default function InvoiceHub({
     setCustomSaleDiscount(0);
     setCustomSalePaid(0);
     setCustomSaleNote('');
+    setCustomSaleFiles([]);
     alert('কাস্টম বিক্রয় ইনভয়েস সফলভাবে তৈরি ও সংরক্ষিত হয়েছে!');
   };
 
@@ -787,7 +879,11 @@ export default function InvoiceHub({
       labourCharge: Number(customRentalLabour || 0),
       totalBill: grand,
       paidAmount: paid,
-      dueAmount: Math.max(0, grand - paid)
+      dueAmount: Math.max(0, grand - paid),
+      paymentStatus: (paid >= grand) ? 'Paid' : (paid > 0 ? 'Partial' : 'Due'),
+      paymentMethod: customRentalPaymentMethod,
+      notes: customRentalNote,
+      files: customRentalFiles.length > 0 ? customRentalFiles : undefined
     });
 
     // Reset fields
@@ -805,6 +901,7 @@ export default function InvoiceHub({
     setCustomRentalLabour(0);
     setCustomRentalPaid(0);
     setCustomRentalNote('');
+    setCustomRentalFiles([]);
     alert('কাস্টম ভাড়া ইনভয়েস সফলভাবে তৈরি ও সংরক্ষিত হয়েছে!');
   };
 
@@ -883,7 +980,12 @@ export default function InvoiceHub({
       labourCost: Number(customEventLabour || 0),
       transportCost: Number(customEventTransport || 0),
       extraCharges: Number(customEventExtraCharge || 0),
-      totalCost: total
+      totalCost: total,
+      dueAmount: Math.max(0, total - Number(customEventPaid || 0)),
+      paymentStatus: (Number(customEventPaid || 0) >= total) ? 'Paid' : (Number(customEventPaid || 0) > 0 ? 'Partial' : 'Due'),
+      paymentMethod: customEventPaymentMethod,
+      notes: customEventNotes,
+      files: customEventFiles.length > 0 ? customEventFiles : undefined
     });
 
     // Reset fields
@@ -900,6 +1002,7 @@ export default function InvoiceHub({
     setCustomEventExtraDetails('');
     setCustomEventPaid(0);
     setCustomEventNotes('');
+    setCustomEventFiles([]);
     alert('কাস্টম ইভেন্ট ইনভয়েস সফলভাবে তৈরি ও সংরক্ষিত হয়েছে!');
   };
 
@@ -1129,8 +1232,9 @@ export default function InvoiceHub({
       paymentMethod: finalPaymentMethod,
       termsAndConditions: finalTerms,
       notes: finalNotes,
+      files: finalInvFiles.length > 0 ? finalInvFiles : undefined,
       qrData: `Final Invoice: ${finalInvNo}\nCustomer: ${finalCustomerName}\nEvent: ${finalEventName}\nTotal: ${finalNetPayable} BDT\nAdvance Paid: ${finalAdvancePaid} BDT\nDue: ${finalDueAmount} BDT\nRittika Event Management`,
-      signatureUrl: canvasSignature || undefined
+      signatureUrl: getActiveSignatureUrl()
     };
 
     onAddEventInvoice(payload);
@@ -1143,6 +1247,7 @@ export default function InvoiceHub({
       });
     }
 
+    setFinalInvFiles([]);
     setIsCreatingFinalInvoice(false);
 
     const generatedWithId = {
@@ -1263,65 +1368,407 @@ export default function InvoiceHub({
     });
   }, [quotations, searchQuery, quotationFilterBudgetType, quotationFilterStatus]);
 
+  // 🌟 Unified All Saved Invoices & Quotations List
+  const allSavedInvoicesList = useMemo(() => {
+    type UnifiedItem = {
+      id: string;
+      type: 'quotations' | 'event' | 'sales' | 'rental' | 'purchase';
+      typeLabel: string;
+      number: string;
+      name: string;
+      partyName: string;
+      partyMobile: string;
+      date: string;
+      amount: number;
+      paid: number;
+      due: number;
+      status: string;
+      files: { name: string; url: string }[];
+      originalData: any;
+    };
+
+    const list: UnifiedItem[] = [];
+
+    // Quotations
+    quotations.forEach(q => {
+      list.push({
+        id: q.id,
+        type: 'quotations',
+        typeLabel: 'বাজেট কোটেশন',
+        number: q.quotationNo,
+        name: q.eventName,
+        partyName: q.customerName,
+        partyMobile: q.customerMobile,
+        date: q.date,
+        amount: q.grandTotal,
+        paid: q.advancePaid || 0,
+        due: Math.max(0, q.grandTotal - (q.advancePaid || 0)),
+        status: q.status === 'Converted' ? 'Converted' : (q.budgetType === 'Fixed' ? 'Fixed' : 'Estimated'),
+        files: [],
+        originalData: q
+      });
+    });
+
+    // Event Invoices
+    eventInvoices.forEach(ev => {
+      const files: { name: string; url: string }[] = [];
+      if (ev.files && Array.isArray(ev.files)) files.push(...ev.files);
+      else if (ev.fileUrl) files.push({ name: ev.fileName || 'event_bill', url: ev.fileUrl });
+
+      list.push({
+        id: ev.id,
+        type: 'event',
+        typeLabel: 'ইভেন্ট বিল ও চালান',
+        number: ev.invoiceNo,
+        name: ev.eventName,
+        partyName: ev.customerName,
+        partyMobile: ev.customerMobile,
+        date: ev.date,
+        amount: ev.totalCost,
+        paid: ev.paidAmount !== undefined ? ev.paidAmount : (ev.totalCost - (ev.dueAmount || 0)),
+        due: ev.dueAmount || 0,
+        status: ev.paymentStatus || (ev.dueAmount === 0 ? 'Paid' : 'Due'),
+        files,
+        originalData: ev
+      });
+    });
+
+    // Sales Invoices
+    salesInvoices.forEach(sl => {
+      const files: { name: string; url: string }[] = [];
+      if (sl.files && Array.isArray(sl.files)) files.push(...sl.files);
+      else if (sl.fileUrl) files.push({ name: sl.fileName || 'sales_receipt', url: sl.fileUrl });
+
+      list.push({
+        id: sl.id,
+        type: 'sales',
+        typeLabel: 'বিক্রয় ইনভয়েস',
+        number: sl.invoiceNo,
+        name: sl.itemName,
+        partyName: sl.customerName,
+        partyMobile: sl.customerMobile,
+        date: sl.date,
+        amount: sl.grandTotal,
+        paid: sl.grandTotal,
+        due: 0,
+        status: 'Paid',
+        files,
+        originalData: sl
+      });
+    });
+
+    // Rental Invoices
+    rentalInvoices.forEach(rn => {
+      const files: { name: string; url: string }[] = [];
+      if (rn.files && Array.isArray(rn.files)) files.push(...rn.files);
+      else if (rn.fileUrl) files.push({ name: rn.fileName || 'rental_invoice', url: rn.fileUrl });
+
+      list.push({
+        id: rn.id,
+        type: 'rental',
+        typeLabel: 'ভাড়া ইনভয়েস',
+        number: rn.invoiceNo,
+        name: rn.itemName,
+        partyName: rn.customerName,
+        partyMobile: rn.customerMobile,
+        date: rn.date,
+        amount: rn.totalBill,
+        paid: rn.advancePaid,
+        due: rn.dueAmount,
+        status: rn.paymentStatus,
+        files,
+        originalData: rn
+      });
+    });
+
+    // Purchase Invoices
+    purchaseInvoices.forEach(pc => {
+      const files: { name: string; url: string }[] = [];
+      if (pc.files && Array.isArray(pc.files)) files.push(...pc.files);
+      else if (pc.fileUrl) files.push({ name: pc.fileName || 'supplier_invoice', url: pc.fileUrl });
+
+      list.push({
+        id: pc.id,
+        type: 'purchase',
+        typeLabel: 'সাপ্লায়ার ক্রয় বিল',
+        number: pc.invoiceNo || pc.purchaseNo,
+        name: pc.itemName,
+        partyName: pc.supplierName,
+        partyMobile: pc.supplierMobile,
+        date: pc.date,
+        amount: pc.totalAmount,
+        paid: pc.paymentStatus === 'Paid' ? pc.totalAmount : 0,
+        due: pc.paymentStatus === 'Due' ? pc.totalAmount : 0,
+        status: pc.paymentStatus,
+        files,
+        originalData: pc
+      });
+    });
+
+    // Filter by category
+    let filtered = list;
+    if (archiveFilterType !== 'all') {
+      filtered = filtered.filter(item => item.type === archiveFilterType);
+    }
+
+    // Filter by payment status
+    if (archiveFilterStatus === 'paid') {
+      filtered = filtered.filter(item => item.status === 'Paid' || item.due === 0);
+    } else if (archiveFilterStatus === 'due') {
+      filtered = filtered.filter(item => item.status === 'Due' || item.due > 0);
+    } else if (archiveFilterStatus === 'partial') {
+      filtered = filtered.filter(item => item.status === 'Partial');
+    } else if (archiveFilterStatus === 'converted') {
+      filtered = filtered.filter(item => item.status === 'Converted');
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(item => 
+        item.number.toLowerCase().includes(q) ||
+        item.partyName.toLowerCase().includes(q) ||
+        item.partyMobile.includes(q) ||
+        item.name.toLowerCase().includes(q) ||
+        item.date.includes(q) ||
+        item.typeLabel.toLowerCase().includes(q)
+      );
+    }
+
+    // Sort by date descending
+    return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [quotations, eventInvoices, salesInvoices, rentalInvoices, purchaseInvoices, archiveFilterType, archiveFilterStatus, searchQuery]);
+
   // Handle printing of an invoice
   const handlePrint = () => {
     window.print();
   };
 
-  // WhatsApp/Email share mechanism
-  const triggerShare = (inv: any, type: 'sales' | 'rental' | 'event' | 'quotations') => {
+  // 🌟 Direct High-Quality PDF Downloader
+  const handleDirectPdfDownload = async () => {
+    if (!previewInvoice) return;
+    setIsDownloadingPdf(true);
+    try {
+      const res = await downloadInvoicePDF('printable-invoice-canvas', {
+        invoiceNo: previewInvoice.data.quotationNo || previewInvoice.data.invoiceNo || previewInvoice.data.purchaseNo || previewInvoice.data.id || 'INV',
+        customerName: previewInvoice.data.customerName || previewInvoice.data.eventName || previewInvoice.data.supplierName || 'Client',
+        type: previewInvoice.type,
+        date: previewInvoice.data.date
+      });
+      if (res.success) {
+        setDownloadSuccessToast(`✓ "${res.fileName}" সফলভাবে ডাউনলোড হয়েছে!`);
+        setTimeout(() => setDownloadSuccessToast(null), 4000);
+      } else {
+        alert('PDF তৈরিতে সমস্যা হয়েছে: ' + (res.error || 'অনুগ্রহ করে পুনরায় চেষ্টা করুন'));
+      }
+    } catch (err: any) {
+      console.error('PDF error:', err);
+      alert('PDF ডাউনলোড ব্যর্থ হয়েছে: ' + (err?.message || 'Error'));
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
+
+  // 🌟 Direct High-Definition JPG Image Downloader
+  const handleDirectImgDownload = async () => {
+    if (!previewInvoice) return;
+    setIsDownloadingImg(true);
+    try {
+      const res = await downloadInvoiceImage('printable-invoice-canvas', {
+        invoiceNo: previewInvoice.data.quotationNo || previewInvoice.data.invoiceNo || previewInvoice.data.purchaseNo || previewInvoice.data.id || 'INV',
+        customerName: previewInvoice.data.customerName || previewInvoice.data.eventName || previewInvoice.data.supplierName || 'Client',
+        type: previewInvoice.type,
+        date: previewInvoice.data.date
+      }, 'jpg');
+      if (res.success) {
+        setDownloadSuccessToast(`✓ HD বিল ছবি "${res.fileName}" ডাউনলোড হয়েছে!`);
+        setTimeout(() => setDownloadSuccessToast(null), 4000);
+      }
+    } catch (err: any) {
+      console.error('Image error:', err);
+      alert('ছবি তৈরি ব্যর্থ হয়েছে: ' + (err?.message || 'Error'));
+    } finally {
+      setIsDownloadingImg(false);
+    }
+  };
+
+  // 🌟 WhatsApp/Email Share Trigger Mechanism
+  const triggerShare = (inv: any, type: 'sales' | 'rental' | 'event' | 'quotations' | 'purchase') => {
+    const invId = inv.quotationNo || inv.invoiceNo || inv.purchaseNo || inv.id || '';
+    const name = inv.customerName || inv.eventName || inv.supplierName || 'সম্মানিত গ্রাহক';
+    const total = inv.grandTotal || inv.totalCost || inv.totalBill || inv.netPayable || inv.baseBudget || 0;
+    const paid = inv.advancePaid || inv.paidAmount || (inv.paymentStatus === 'Paid' ? total : 0);
+    const due = inv.dueAmount !== undefined ? inv.dueAmount : Math.max(0, total - paid);
+
     setSharingInvoice({
-      id: inv.id,
+      id: invId,
       type,
-      mobile: inv.customerMobile || '',
-      name: inv.customerName || inv.eventName || 'গ্রাহক'
+      mobile: inv.customerMobile || inv.mobile || '',
+      email: inv.customerEmail || inv.email || '',
+      name,
+      date: inv.date || new Date().toISOString().split('T')[0],
+      total,
+      paid,
+      due,
+      rawData: inv
     });
-    setShareTarget(inv.customerMobile || '');
+    setShareTarget(inv.customerMobile || inv.mobile || '');
     setShareMethod('whatsapp');
   };
 
+  // 🌟 Build Rich Formatted Text with Summary and Verification Links
+  const buildShareText = (item: NonNullable<typeof sharingInvoice>) => {
+    const appBaseUrl = window.location.origin;
+    const docTypeTitle = item.type === 'quotations' 
+      ? 'বাজেট কোটেশন ও এস্টিমেট' 
+      : item.type === 'event' 
+      ? 'ইভেন্ট ফাইনাল ইনভয়েস বিল' 
+      : item.type === 'rental'
+      ? 'ভাড়া বিল মেমো'
+      : item.type === 'sales'
+      ? 'বিক্রয় ইনভয়েস বিল'
+      : 'অফিসিয়াল ইনভয়েস';
+
+    const totalTxt = formatCurrency(item.total || 0);
+    const paidTxt = formatCurrency(item.paid || 0);
+    const dueTxt = formatCurrency(item.due || 0);
+
+    let text = `👑 *রিত্তিকা ইভেন্ট ম্যানেজমেন্ট* — *${docTypeTitle}*\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `👤 *গ্রাহক / ইভেন্ট:* ${item.name}\n`;
+    text += `🧾 *ডকুমেন্ট নং:* ${item.id}\n`;
+    if (item.date) text += `📅 *তারিখ:* ${item.date}\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `💰 *মোট বাজেট / বিল:* ${totalTxt}\n`;
+    if ((item.paid || 0) > 0) {
+      text += `💵 *পরিশোধিত:* ${paidTxt}\n`;
+    }
+    if ((item.due || 0) > 0) {
+      text += `⚠️ *অবশিষ্ট বকেয়া:* ${dueTxt}\n`;
+    } else if ((item.total || 0) > 0 && (item.paid || 0) >= (item.total || 0)) {
+      text += `✅ *স্ট্যাটাস:* সম্পূর্ণ পরিশোধিত (Paid in Full)\n`;
+    }
+    text += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `📄 *অফিসিয়াল কপি:* আপনার বিলের মূল ডিজিটাল কপি প্রস্তুত রয়েছে।\n`;
+    text += `🌐 *অনলাইন পোর্টাল:* ${appBaseUrl}\n\n`;
+    text += `📞 *হটলাইন:* +880 1721-779396\n`;
+    text += `🏢 *অফিস:* রথপাড়া, ভেড়ামারা, কুষ্টিয়া\n`;
+    text += `রিত্তিকা ইভেন্ট ম্যানেজমেন্টের সাথে যোগাযোগ করার জন্য ধন্যবাদ! ✨`;
+    return text;
+  };
+
+  // 🌟 Automated 1-Click PDF Download + WhatsApp Chat
+  const handleDirectWhatsAppShareWithPdf = async () => {
+    if (!sharingInvoice) return;
+    
+    // Auto-trigger PDF download if preview canvas exists or preview invoice is set
+    const previewCanvas = document.getElementById('printable-invoice-canvas');
+    if (previewCanvas) {
+      try {
+        await downloadInvoicePDF('printable-invoice-canvas', {
+          invoiceNo: sharingInvoice.id,
+          customerName: sharingInvoice.name,
+          type: sharingInvoice.type,
+          date: sharingInvoice.date
+        });
+      } catch (e) {
+        console.warn('Silent PDF download trigger:', e);
+      }
+    }
+
+    const message = encodeURIComponent(buildShareText(sharingInvoice));
+    let cleanMobile = (shareTarget || sharingInvoice.mobile || '').replace(/[^0-9]/g, '');
+    if (cleanMobile.startsWith('0')) {
+      cleanMobile = '880' + cleanMobile.slice(1);
+    } else if (!cleanMobile.startsWith('880') && cleanMobile.length === 10) {
+      cleanMobile = '880' + cleanMobile;
+    }
+
+    const waUrl = cleanMobile 
+      ? `https://wa.me/${cleanMobile}?text=${message}` 
+      : `https://wa.me/?text=${message}`;
+    
+    window.open(waUrl, '_blank');
+    setDownloadSuccessToast('✓ PDF ফাইল ডাউনলোড হয়েছে এবং WhatsApp ওপেন করা হয়েছে! আপনি ফাইলটি সহজে চ্যাটে ড্রপ/সংযুক্ত করতে পারেন।');
+    setTimeout(() => setDownloadSuccessToast(null), 6000);
+  };
+
+  // 🌟 Native Web Share API with Attached PDF File (Mobile WhatsApp / Gmail Direct Send)
+  const handleNativeFileShare = async () => {
+    if (!sharingInvoice) return;
+    setIsSharingNative(true);
+    try {
+      const previewCanvas = document.getElementById('printable-invoice-canvas');
+      if (!previewCanvas) {
+        alert('অনুগ্রহ করে ইনভয়েসটি প্রিভিউ স্ক্রিনে ওপেন রাখুন');
+        setIsSharingNative(false);
+        return;
+      }
+
+      const res = await downloadInvoicePDF('printable-invoice-canvas', {
+        invoiceNo: sharingInvoice.id,
+        customerName: sharingInvoice.name,
+        type: sharingInvoice.type,
+        date: sharingInvoice.date
+      });
+
+      if (res.success && res.file) {
+        const shared = await shareInvoiceFileNative(res.file, {
+          title: `Rittika Event Management - ${sharingInvoice.id}`,
+          text: buildShareText(sharingInvoice)
+        });
+        if (!shared) {
+          // If navigator.share was cancelled or unsupported, fallback to WhatsApp web link
+          handleDirectWhatsAppShareWithPdf();
+        }
+      } else {
+        handleDirectWhatsAppShareWithPdf();
+      }
+    } catch (err) {
+      console.error('Native share error:', err);
+      handleDirectWhatsAppShareWithPdf();
+    } finally {
+      setIsSharingNative(false);
+    }
+  };
+
+  // 🌟 Automated 1-Click PDF Download + Email Client
+  const handleDirectEmailShareWithPdf = async () => {
+    if (!sharingInvoice) return;
+    
+    const previewCanvas = document.getElementById('printable-invoice-canvas');
+    if (previewCanvas) {
+      try {
+        await downloadInvoicePDF('printable-invoice-canvas', {
+          invoiceNo: sharingInvoice.id,
+          customerName: sharingInvoice.name,
+          type: sharingInvoice.type,
+          date: sharingInvoice.date
+        });
+      } catch (e) {
+        console.warn('Silent PDF download error:', e);
+      }
+    }
+
+    const emailTo = shareTarget || sharingInvoice.email || '';
+    const subject = encodeURIComponent(`Rittika Event Management - ${sharingInvoice.type === 'quotations' ? 'বাজেট কোটেশন' : 'ইনভয়েস বিল'} #${sharingInvoice.id}`);
+    const body = encodeURIComponent(buildShareText(sharingInvoice) + `\n\n(অফিসিয়াল PDF ফাইলটি আপনার ডিভাইসে ডাউনলোড হয়েছে, অনুগ্রহ করে ইমেইলে এটাচ করুন)`);
+    
+    const mailtoUrl = `mailto:${emailTo}?subject=${subject}&body=${body}`;
+    window.location.href = mailtoUrl;
+
+    setDownloadSuccessToast('✓ PDF ফাইল ডাউনলোড হয়েছে এবং ইমেইল ক্লায়েন্ট ওপেন হয়েছে!');
+    setTimeout(() => setDownloadSuccessToast(null), 5000);
+  };
+
+  // Standard submit router
   const handleShareSubmit = () => {
     if (!sharingInvoice) return;
     if (shareMethod === 'whatsapp') {
-      let text = '';
-      if (sharingInvoice.type === 'quotations') {
-        text = encodeURIComponent(
-          `📋 *রিত্তিকা ইভেন্ট ম্যানেজমেন্ট — বাজেট কোটেশন*\n` +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `👤 *গ্রাহক:* ${sharingInvoice.name}\n` +
-          `🧾 *কোটেশন নং:* ${sharingInvoice.id}\n` +
-          `📞 *যোগাযোগ:* +880 1721-779396\n` +
-          `🏢 *ঠিকানা:* রথপাড়া, ভেড়ামারা, কুষ্টিয়া\n` +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `আপনার ইভেন্টের বিস্তারিত বাজেট কোটেশন ও এস্টিমেট প্রস্তুত করা হয়েছে। রিত্তিকা ইভেন্ট ম্যানেজমেন্টের সাথে যোগাযোগ করার জন্য ধন্যবাদ!`
-        );
-      } else if (sharingInvoice.type === 'event') {
-        text = encodeURIComponent(
-          `🎉 *রিত্তিকা ইভেন্ট ম্যানেজমেন্ট — ইভেন্ট ফাইনাল ইনভয়েস বিল*\n` +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `👤 *গ্রাহক:* ${sharingInvoice.name}\n` +
-          `🧾 *ইনভয়েস নং:* ${sharingInvoice.id}\n` +
-          `📞 *যোগাযোগ:* +880 1721-779396\n` +
-          `🏢 *ঠিকানা:* রথপাড়া, ভেড়ামারা, কুষ্টিয়া\n` +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `আপনার ইভেন্ট সম্পন্ন বিল এবং পেমেন্ট রসিদ প্রস্তুত করা হয়েছে। রিত্তিকা ইভেন্ট ম্যানেজমেন্টের সেবা গ্রহণ করার জন্য আপনাকে আন্তরিক ধন্যবাদ!`
-        );
-      } else {
-        text = encodeURIComponent(
-          `🧾 *রিত্তিকা ইভেন্ট ম্যানেজমেন্ট — অফিসিয়াল ইনভয়েস*\n` +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `👤 *গ্রাহক:* ${sharingInvoice.name}\n` +
-          `🧾 *ইনভয়েস নং:* ${sharingInvoice.id}\n` +
-          `📞 *যোগাযোগ:* +880 1721-779396\n` +
-          `ধন্যবাদ!`
-        );
-      }
-      const url = `https://wa.me/${shareTarget}?text=${text}`;
-      window.open(url, '_blank');
+      handleDirectWhatsAppShareWithPdf();
     } else {
-      alert(`ইমেলটি (${shareTarget}) ঠিকানায় প্রেরণ করা হয়েছে! (সিমুলেটেড)`);
+      handleDirectEmailShareWithPdf();
     }
-    setSharingInvoice(null);
   };
 
   return (
@@ -1356,12 +1803,13 @@ export default function InvoiceHub({
       {/* 🌟 Tab Selector Header */}
       <div className="flex overflow-x-auto border-b-4 border-black gap-2 no-print" id="invoice-tabs">
         {[
-          { id: 'quotations', label: 'বাজেট কোটেশন ও এস্টিমেট (Quotations)', icon: Calculator, badge: quotations.length },
-          { id: 'document-center', label: 'ডকুমেন্ট ও মিডিয়া সেন্টার', icon: Folder },
-          { id: 'purchase-invoices', label: 'Supplier ক্রয় ইনভয়েস', icon: FileSpreadsheet, badge: purchaseInvoices.length },
+          { id: 'all-saved-invoices', label: 'সংরক্ষিত সকল ইনভয়েস আর্কাইভ (Archive & Edit)', icon: Folder, badge: quotations.length + purchaseInvoices.length + salesInvoices.length + rentalInvoices.length + eventInvoices.length },
+          { id: 'quotations', label: 'বাজেট কোটেশন ও এস্টিমেট', icon: Calculator, badge: quotations.length },
+          { id: 'event-invoices', label: 'ইভেন্ট বিল ও চালান', icon: FileText, badge: eventInvoices.length },
           { id: 'sales-invoices', label: 'বিক্রয় ইনভয়েস (Sales)', icon: FileText, badge: salesInvoices.length },
           { id: 'rental-invoices', label: 'ভাড়া ইনভয়েস (Rental)', icon: FileText, badge: rentalInvoices.length },
-          { id: 'event-invoices', label: 'ইভেন্ট বিল ও চালান', icon: FileText, badge: eventInvoices.length }
+          { id: 'purchase-invoices', label: 'Supplier ক্রয় ইনভয়েস', icon: FileSpreadsheet, badge: purchaseInvoices.length },
+          { id: 'document-center', label: 'ডকুমেন্ট ও মিডিয়া সেন্টার', icon: Layers }
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -1451,6 +1899,149 @@ export default function InvoiceHub({
         {/* LEFT COLUMN: Controls / Forms / Folder list */}
         <div className="lg:col-span-4 space-y-6 no-print">
           
+          {/* Active Tab: All Saved Invoices Archive Left Panel */}
+          {activeTab === 'all-saved-invoices' && (
+            <div className="space-y-4">
+              <div className="neo-card p-5 space-y-4 bg-yellow-50 border-2 border-black">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-black uppercase tracking-wider text-black flex items-center gap-1.5">
+                    <Folder size={16} className="text-yellow-600" />
+                    ইনভয়েস আর্কাইভ কন্ট্রোল
+                  </h3>
+                  <span className="text-[10px] bg-black text-yellow-400 px-2 py-0.5 font-mono font-black rounded">
+                    {toBengaliNumber(quotations.length + purchaseInvoices.length + salesInvoices.length + rentalInvoices.length + eventInvoices.length)} টি মোট
+                  </span>
+                </div>
+                
+                <p className="text-xs font-bold text-slate-700 leading-relaxed">
+                  সবধরনের তৈরি ও সংরক্ষিত ইনভয়েস, কোটেশন, বিল ও চালান এক নজরে দেখুন, প্রিভিউ ও প্রিন্ট করুন, এডিট বা কাস্টমাইজ করুন এবং হোয়াটসঅ্যাপে পাঠান।
+                </p>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    onClick={handleOpenNewQuotation}
+                    className="neo-btn py-2 text-[11px] flex items-center justify-center gap-1.5 bg-yellow-400 text-black font-black uppercase tracking-wider shadow-[2px_2px_0px_0px_#000000] hover:bg-yellow-300"
+                  >
+                    <PlusCircle size={13} />
+                    নতুন কোটেশন
+                  </button>
+                  <button
+                    onClick={() => handleOpenFinalInvoice()}
+                    className="neo-btn py-2 text-[11px] flex items-center justify-center gap-1.5 bg-teal-400 text-black font-black uppercase tracking-wider shadow-[2px_2px_0px_0px_#000000] hover:bg-teal-300"
+                  >
+                    <Sparkles size={13} />
+                    ফাইনাল বিল
+                  </button>
+                </div>
+              </div>
+
+              {/* Archive Category Filter Pills */}
+              <div className="neo-card p-4 space-y-3 bg-white border-2 border-black">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-1.5 flex items-center justify-between">
+                  <span>ইনভয়েস ধরন অনুযায়ী ফিল্টার</span>
+                  <span className="text-[10px] text-slate-500 font-bold font-mono">
+                    {toBengaliNumber(
+                      (archiveFilterType === 'all' 
+                        ? quotations.length + purchaseInvoices.length + salesInvoices.length + rentalInvoices.length + eventInvoices.length
+                        : archiveFilterType === 'quotations' ? quotations.length
+                        : archiveFilterType === 'event' ? eventInvoices.length
+                        : archiveFilterType === 'sales' ? salesInvoices.length
+                        : archiveFilterType === 'rental' ? rentalInvoices.length
+                        : purchaseInvoices.length)
+                    )} টি
+                  </span>
+                </h4>
+                
+                <div className="space-y-1.5">
+                  {[
+                    { id: 'all', label: 'সকল সংরক্ষিত ইনভয়েস ও মেমো', count: quotations.length + purchaseInvoices.length + salesInvoices.length + rentalInvoices.length + eventInvoices.length },
+                    { id: 'quotations', label: 'বাজেট কোটেশন ও এস্টিমেট', count: quotations.length },
+                    { id: 'event', label: 'ইভেন্ট বিল ও ফাইনাল ইনভয়েস', count: eventInvoices.length },
+                    { id: 'sales', label: 'সরাসরি বিক্রয় ইনভয়েস (Sales)', count: salesInvoices.length },
+                    { id: 'rental', label: 'মালামাল ভাড়া ইনভয়েস (Rental)', count: rentalInvoices.length },
+                    { id: 'purchase', label: 'সাপ্লায়ার ক্রয় চালান (Purchase)', count: purchaseInvoices.length },
+                  ].map(f => (
+                    <button
+                      key={f.id}
+                      onClick={() => setArchiveFilterType(f.id as any)}
+                      className={`w-full text-left px-3 py-2 text-xs font-black border-2 border-black flex items-center justify-between transition cursor-pointer ${
+                        archiveFilterType === f.id
+                          ? 'bg-yellow-400 text-black shadow-[2px_2px_0px_0px_#000000]'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      <span>{f.label}</span>
+                      <span className="font-mono text-[10px] bg-black text-white px-1.5 py-0.5 rounded">
+                        {toBengaliNumber(f.count)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Status Filter */}
+              <div className="neo-card p-4 space-y-3 bg-white border-2 border-black">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-1.5">
+                  পেমেন্ট স্ট্যাটাস ফিল্টার
+                </h4>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {[
+                    { id: 'all', label: 'সব স্ট্যাটাস' },
+                    { id: 'paid', label: 'পরিশোধিত (Paid)' },
+                    { id: 'due', label: 'বকেয়া (Due)' },
+                    { id: 'converted', label: 'কনভার্টেড ইভেন্ট' }
+                  ].map(st => (
+                    <button
+                      key={st.id}
+                      onClick={() => setArchiveFilterStatus(st.id as any)}
+                      className={`px-2 py-1.5 text-[11px] font-black border border-black rounded text-center transition cursor-pointer ${
+                        archiveFilterStatus === st.id
+                          ? 'bg-slate-900 text-amber-400'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-800'
+                      }`}
+                    >
+                      {st.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Financial Overall Summary */}
+              <div className="neo-card p-4 space-y-3 bg-white border-2 border-black">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                  <DollarSign size={14} />
+                  আর্থিক সার্বিক হিসাব
+                </h4>
+                <div className="space-y-2 text-xs font-bold">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-600">মোট কোটেশন বাজেট:</span>
+                    <span className="font-mono font-black text-indigo-700">
+                      {formatCurrency(quotations.reduce((acc, q) => acc + q.grandTotal, 0))}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-600">মোট বিক্রয় বিল:</span>
+                    <span className="font-mono font-black text-emerald-700">
+                      {formatCurrency(salesInvoices.reduce((acc, s) => acc + s.grandTotal, 0))}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-600">মোট ভাড়া বিল:</span>
+                    <span className="font-mono font-black text-amber-700">
+                      {formatCurrency(rentalInvoices.reduce((acc, r) => acc + r.totalBill, 0))}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center border-t border-slate-100 pt-1.5">
+                    <span className="text-slate-600">মোট সাপ্লায়ার ক্রয়:</span>
+                    <span className="font-mono font-black text-rose-700">
+                      {formatCurrency(purchaseInvoices.reduce((acc, p) => acc + p.totalAmount, 0))}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Active Tab: Quotations Left Panel */}
           {activeTab === 'quotations' && (
             <div className="space-y-4">
@@ -1810,6 +2401,43 @@ export default function InvoiceHub({
                     />
                   </div>
 
+                  <div>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <label className="text-[10px] font-black uppercase block">ডকুমেন্ট / মেমো ছবি আপলোড (Multiple Files)</label>
+                      <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200">
+                        একাধিক ছবি সাপোর্ট
+                      </span>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      multiple
+                      onChange={handleSalesFileUpload}
+                      className="w-full bg-white border-2 border-black p-1 text-[11px] cursor-pointer"
+                    />
+                    {customSaleFiles.length > 0 && (
+                      <div className="mt-1.5 space-y-1">
+                        <p className="text-[10px] font-black text-emerald-800">
+                          ✓ মোট {customSaleFiles.length} টি ফাইল সংযুক্ত:
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {customSaleFiles.map((sf, idx) => (
+                            <span key={idx} className="text-[10px] bg-emerald-50 border border-emerald-300 text-emerald-800 px-1.5 py-0.5 rounded flex items-center gap-1">
+                              <span className="max-w-[100px] truncate">{sf.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => setCustomSaleFiles(prev => prev.filter((_, i) => i !== idx))}
+                                className="text-red-500 hover:text-red-700 font-bold text-xs"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="p-2 bg-emerald-50 border border-emerald-300 flex justify-between items-center text-xs font-black">
                     <span>মোট বিল:</span>
                     <span className="font-mono text-emerald-800 text-sm">
@@ -2061,6 +2689,43 @@ export default function InvoiceHub({
                         className="w-full bg-white border-2 border-black p-1.5 font-mono"
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <label className="text-[10px] font-black uppercase block">চুক্তিপত্র / মালামাল ছবি আপলোড (Multiple Files)</label>
+                      <span className="text-[9px] text-amber-800 font-bold bg-amber-50 px-1 py-0.5 rounded border border-amber-200">
+                        একাধিক ছবি সাপোর্ট
+                      </span>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      multiple
+                      onChange={handleRentalFileUpload}
+                      className="w-full bg-white border-2 border-black p-1 text-[11px] cursor-pointer"
+                    />
+                    {customRentalFiles.length > 0 && (
+                      <div className="mt-1.5 space-y-1">
+                        <p className="text-[10px] font-black text-amber-900">
+                          ✓ মোট {customRentalFiles.length} টি ফাইল সংযুক্ত:
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {customRentalFiles.map((rf, idx) => (
+                            <span key={idx} className="text-[10px] bg-amber-50 border border-amber-300 text-amber-900 px-1.5 py-0.5 rounded flex items-center gap-1">
+                              <span className="max-w-[100px] truncate">{rf.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => setCustomRentalFiles(prev => prev.filter((_, i) => i !== idx))}
+                                className="text-red-500 hover:text-red-700 font-bold text-xs"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="p-2 bg-amber-50 border border-amber-300 flex justify-between items-center text-xs font-black">
@@ -2317,6 +2982,43 @@ export default function InvoiceHub({
                     </div>
                   </div>
 
+                  <div>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <label className="text-[10px] font-black uppercase block">ইভেন্ট সাইট / ডেকোরেশন ছবি আপলোড (Multiple Files)</label>
+                      <span className="text-[9px] text-teal-800 font-bold bg-teal-50 px-1 py-0.5 rounded border border-teal-200">
+                        একাধিক ছবি সাপোর্ট
+                      </span>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      multiple
+                      onChange={handleEventFileUpload}
+                      className="w-full bg-white border-2 border-black p-1 text-[11px] cursor-pointer"
+                    />
+                    {customEventFiles.length > 0 && (
+                      <div className="mt-1.5 space-y-1">
+                        <p className="text-[10px] font-black text-teal-900">
+                          ✓ মোট {customEventFiles.length} টি ফাইল সংযুক্ত:
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {customEventFiles.map((ef, idx) => (
+                            <span key={idx} className="text-[10px] bg-teal-50 border border-teal-300 text-teal-900 px-1.5 py-0.5 rounded flex items-center gap-1">
+                              <span className="max-w-[100px] truncate">{ef.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => setCustomEventFiles(prev => prev.filter((_, i) => i !== idx))}
+                                className="text-red-500 hover:text-red-700 font-bold text-xs"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="p-2 bg-teal-50 border border-teal-300 flex justify-between items-center text-xs font-black">
                     <span>মোট ইভেন্ট বিল:</span>
                     <span className="font-mono text-teal-900 text-sm">
@@ -2344,63 +3046,183 @@ export default function InvoiceHub({
           {previewInvoice ? (
             <div className="space-y-4" id="active-invoice-renderer">
               {/* Toolbar */}
-              <div className="flex items-center justify-between border-2 border-black p-3 bg-slate-100 shadow-[2px_2px_0px_0px_#000000] no-print flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setPreviewInvoice(null)}
-                    className="neo-btn px-3 py-1.5 text-xs bg-white flex items-center gap-1 font-bold shadow-[1px_1px_0px_0px_#000000]"
-                  >
-                    ← ফিরে যান
-                  </button>
-                  <span className="text-xs font-black text-black font-mono">
-                    {previewInvoice.type === 'quotations' 
-                      ? `কোটেশন নং: ${previewInvoice.data.quotationNo}`
-                      : `ইনভয়েস নং: ${previewInvoice.data.invoiceNo || previewInvoice.data.purchaseNo}`}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {previewInvoice.type === 'quotations' && (
+              <div className="space-y-2 no-print">
+                <div className="flex items-center justify-between border-2 border-black p-3 bg-slate-100 shadow-[2px_2px_0px_0px_#000000] flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => handleOpenFinalInvoice(previewInvoice.data)}
-                      className="neo-btn px-3 py-1.5 text-xs bg-amber-400 flex items-center gap-1.5 font-black uppercase shadow-[1px_1px_0px_0px_#000000] hover:bg-amber-300"
-                      title="ইভেন্ট সম্পন্ন করার পর ফাইনাল ইনভয়েস বিল জেনারেট করুন"
+                      onClick={() => setPreviewInvoice(null)}
+                      className="neo-btn px-3 py-1.5 text-xs bg-white flex items-center gap-1 font-bold shadow-[1px_1px_0px_0px_#000000]"
                     >
-                      <Sparkles size={13} />
-                      ⚡ ফাইনাল বিল জেনারেট
+                      ← ফিরে যান
                     </button>
-                  )}
-                  {previewInvoice.type === 'quotations' && previewInvoice.data.status !== 'Converted' && (
+                    <span className="text-xs font-black text-black font-mono">
+                      {previewInvoice.type === 'quotations' 
+                        ? `কোটেশন নং: ${previewInvoice.data.quotationNo}` 
+                        : `ইনভয়েস নং: ${previewInvoice.data.invoiceNo || previewInvoice.data.purchaseNo}`}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <button
-                      onClick={() => {
-                        if (window.confirm('আপনি কি এই কোটেশনটিকে কনফার্মড ইভেন্টে রূপান্তর করতে চান?')) {
-                          if (onConvertQuotationToEvent) {
-                            onConvertQuotationToEvent(previewInvoice.data);
+                      onClick={() => setIsSignOpen(true)}
+                      className="neo-btn px-3 py-1.5 text-xs bg-white hover:bg-slate-50 flex items-center gap-1.5 font-black uppercase shadow-[1px_1px_0px_0px_#000000]"
+                      title="স্বাক্ষর, সিলমোহর ও স্ট্যাম্প কাস্টমাইজ করুন"
+                    >
+                      <Stamp size={13} className="text-blue-700" />
+                      স্বাক্ষর ও সিলমোহর
+                    </button>
+                    {previewInvoice.type === 'quotations' && (
+                      <button
+                        onClick={() => handleOpenFinalInvoice(previewInvoice.data)}
+                        className="neo-btn px-3 py-1.5 text-xs bg-amber-400 flex items-center gap-1.5 font-black uppercase shadow-[1px_1px_0px_0px_#000000] hover:bg-amber-300"
+                        title="ইভেন্ট সম্পন্ন করার পর ফাইনাল ইনভয়েস বিল জেনারেট করুন"
+                      >
+                        <Sparkles size={13} />
+                        ⚡ ফাইনাল বিল জেনারেট
+                      </button>
+                    )}
+                    {previewInvoice.type === 'quotations' && previewInvoice.data.status !== 'Converted' && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm('আপনি কি এই কোটেশনটিকে কনফার্মড ইভেন্টে রূপান্তর করতে চান?')) {
+                            if (onConvertQuotationToEvent) {
+                              onConvertQuotationToEvent(previewInvoice.data);
+                            }
+                            setPreviewInvoice({
+                              ...previewInvoice,
+                              data: { ...previewInvoice.data, status: 'Converted' }
+                            });
                           }
-                          setPreviewInvoice({
-                            ...previewInvoice,
-                            data: { ...previewInvoice.data, status: 'Converted' }
-                          });
-                        }
-                      }}
-                      className="neo-btn px-3 py-1.5 text-xs bg-emerald-400 flex items-center gap-1.5 font-black uppercase shadow-[1px_1px_0px_0px_#000000] hover:bg-emerald-300"
+                        }}
+                        className="neo-btn px-3 py-1.5 text-xs bg-emerald-400 flex items-center gap-1.5 font-black uppercase shadow-[1px_1px_0px_0px_#000000] hover:bg-emerald-300"
+                      >
+                        <CheckCircle2 size={13} />
+                        ⚡ ইভেন্টে রূপান্তর করুন
+                      </button>
+                    )}
+                    <button
+                      onClick={handleDirectPdfDownload}
+                      disabled={isDownloadingPdf}
+                      className="neo-btn px-3.5 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 font-black uppercase shadow-[1px_1px_0px_0px_#000000] cursor-pointer disabled:opacity-50"
+                      title="ডাইরেক্ট হাই-কোয়ালিটি PDF ফাইল হিসেবে ডাউনলোড করুন"
                     >
-                      <CheckCircle2 size={13} />
-                      ⚡ ইভেন্টে রূপান্তর করুন
+                      {isDownloadingPdf ? (
+                        <Loader2 size={13} className="animate-spin text-amber-300" />
+                      ) : (
+                        <Download size={13} className="text-amber-300" />
+                      )}
+                      <span>{isDownloadingPdf ? 'PDF তৈরি হচ্ছে...' : 'সরাসরি PDF ডাউনলোড'}</span>
                     </button>
-                  )}
+
+                    <button
+                      onClick={handleDirectImgDownload}
+                      disabled={isDownloadingImg}
+                      className="neo-btn px-3 py-1.5 text-xs bg-amber-400 hover:bg-amber-300 text-black flex items-center gap-1.5 font-black uppercase shadow-[1px_1px_0px_0px_#000000] cursor-pointer disabled:opacity-50"
+                      title="HD ইমেজ (JPG) ফরম্যাটে ডাউনলোড করুন"
+                    >
+                      {isDownloadingImg ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <ImageIcon size={13} />
+                      )}
+                      <span>{isDownloadingImg ? 'ছবি তৈরি...' : 'HD ছবি ডাউনলোড'}</span>
+                    </button>
+
+                    <button
+                      onClick={handlePrint}
+                      className="neo-btn px-3 py-1.5 text-xs bg-white hover:bg-slate-50 flex items-center gap-1.5 font-black uppercase shadow-[1px_1px_0px_0px_#000000] cursor-pointer"
+                      title="ব্রাউজার প্রিন্টার উইন্ডো ওপেন করুন"
+                    >
+                      <Printer size={13} />
+                      <span>প্রিন্ট করুন</span>
+                    </button>
+
+                    <button
+                      onClick={() => triggerShare(previewInvoice.data, previewInvoice.type as any)}
+                      className="neo-btn px-3.5 py-1.5 text-xs bg-emerald-500 hover:bg-emerald-600 text-white flex items-center gap-1.5 font-black uppercase shadow-[1px_1px_0px_0px_#000000] cursor-pointer"
+                      title="WhatsApp বা Email এ PDF সহ সরাসরি পাঠান"
+                    >
+                      <Share2 size={13} />
+                      <span>WhatsApp ও Email শেয়ার</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 🌟 Download Success Toast Banner */}
+                {downloadSuccessToast && (
+                  <div className="bg-emerald-500 text-white p-3 rounded-lg border-2 border-black font-black text-xs flex items-center justify-between shadow-[2px_2px_0px_0px_#000000] animate-bounce">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-white" />
+                      <span>{downloadSuccessToast}</span>
+                    </div>
+                    <button 
+                      onClick={() => setDownloadSuccessToast(null)}
+                      className="p-0.5 hover:bg-emerald-600 rounded text-white"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
+
+                {/* 🌟 Interactive Live Seal & Stamp Quick-Controls Bar */}
+                <div className="bg-slate-900 text-white p-2.5 rounded-lg border-2 border-black flex items-center justify-between flex-wrap gap-2 text-xs">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {/* Company Seal Toggle */}
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none font-bold text-amber-300">
+                      <input
+                        type="checkbox"
+                        checked={previewSealEnabled}
+                        onChange={(e) => setPreviewSealEnabled(e.target.checked)}
+                        className="rounded accent-amber-400 cursor-pointer"
+                      />
+                      <span>নীল অফিসিয়াল সিলমোহর (Official Seal)</span>
+                    </label>
+
+                    {/* Status Rubber Stamp Selector */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-300 font-bold">স্ট্যাটাস স্ট্যাম্প:</span>
+                      <select
+                        value={previewStampOverride}
+                        onChange={(e) => setPreviewStampOverride(e.target.value as any)}
+                        className="bg-slate-800 text-white border border-slate-700 px-2 py-1 rounded text-xs font-bold cursor-pointer"
+                      >
+                        <option value="auto">✨ স্বয়ংক্রিয় (Auto by Status)</option>
+                        <option value="fixed">🔒 ফিক্সড চুক্তি (FIXED CONTRACT)</option>
+                        <option value="final">⚡ ফাইনাল বিল (FINAL INVOICE)</option>
+                        <option value="estimate">📋 আনুমানিক (ESTIMATED BUDGET)</option>
+                        <option value="paid">✓ পরিশোধিত (PAID IN FULL)</option>
+                        <option value="unpaid">⚠️ বকেয়া বিল (UNPAID / DUE)</option>
+                        <option value="advance">💵 অগ্রিম প্রাপ্তি (ADVANCE RECEIVED)</option>
+                        <option value="approved">★ অনুমোদিত (APPROVED)</option>
+                        <option value="original">📄 মূল কপি (ORIGINAL COPY)</option>
+                        <option value="confidential">🔒 গোপনীয় (CONFIDENTIAL)</option>
+                        <option value="cancelled">✕ বাতিলকৃত (CANCELLED)</option>
+                        <option value="none">🚫 স্ট্যাম্প বন্ধ (Hide Stamp)</option>
+                      </select>
+                    </div>
+
+                    {/* Stamp Color Selector */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-300 font-bold">কালি:</span>
+                      <select
+                        value={previewStampColor}
+                        onChange={(e) => setPreviewStampColor(e.target.value as any)}
+                        className="bg-slate-800 text-white border border-slate-700 px-2 py-1 rounded text-xs font-bold cursor-pointer"
+                      >
+                        <option value="royal-blue">🔵 রয়েল ব্লু (Royal Blue)</option>
+                        <option value="emerald">🟢 পান্না সবুজ (Emerald)</option>
+                        <option value="ruby-red">🔴 রুবি লাল (Ruby Red)</option>
+                        <option value="deep-navy">⚫ ডিপ নেভি (Deep Navy)</option>
+                        <option value="purple">🟣 বেগুনি (Purple)</option>
+                      </select>
+                    </div>
+                  </div>
+
                   <button
-                    onClick={handlePrint}
-                    className="neo-btn px-3 py-1.5 text-xs bg-yellow-400 flex items-center gap-1.5 font-black uppercase shadow-[1px_1px_0px_0px_#000000]"
+                    onClick={() => setIsSignOpen(true)}
+                    className="text-[11px] font-black uppercase text-amber-400 hover:text-amber-300 underline flex items-center gap-1 cursor-pointer"
                   >
-                    <Printer size={13} />
-                    প্রিন্ট / PDF ডাউনলোড
-                  </button>
-                  <button
-                    onClick={() => triggerShare(previewInvoice.data, previewInvoice.type as any)}
-                    className="neo-btn px-3 py-1.5 text-xs bg-teal-300 flex items-center gap-1.5 font-black uppercase shadow-[1px_1px_0px_0px_#000000]"
-                  >
-                    <Share2 size={13} />
-                    শেয়ার করুন
+                    <PenTool size={12} />
+                    স্বাক্ষর ও সিলমোহর সেটিংস
                   </button>
                 </div>
               </div>
@@ -2424,16 +3246,25 @@ export default function InvoiceHub({
                   <div className="border-b-2 border-slate-900 pb-5">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                       <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-amber-400 via-amber-500 to-yellow-500 border-2 border-slate-900 flex flex-col items-center justify-center text-slate-950 font-black shadow-[3px_3px_0px_0px_#0f172a] shrink-0">
-                          <span className="text-xl tracking-tighter leading-none">REM</span>
-                          <span className="text-[7px] tracking-widest uppercase mt-0.5">PREMIUM</span>
+                        <div className="h-16 sm:h-20 w-auto min-w-[120px] max-w-[200px] rounded-xl bg-black border-2 border-slate-900 flex items-center justify-center p-1.5 shadow-[3px_3px_0px_0px_#0f172a] shrink-0 overflow-hidden relative">
+                          <img 
+                            src="/logo.png" 
+                            alt="Rittika Event Management Logo" 
+                            className="h-full w-auto max-h-full object-contain filter drop-shadow-md" 
+                            onError={(e) => {
+                              (e.currentTarget as HTMLElement).style.display = 'none';
+                              if (e.currentTarget.parentElement) {
+                                e.currentTarget.parentElement.innerHTML = '<span class="text-amber-400 text-lg font-black font-serif px-2">REM</span>';
+                              }
+                            }}
+                          />
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
-                            <h2 className="text-2xl font-black uppercase tracking-tight text-slate-900 leading-none">Rittika Event Management</h2>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-slate-900 leading-none">Rittika Event Management</h2>
                             <span className="bg-slate-900 text-amber-400 text-[9px] font-black px-2 py-0.5 rounded tracking-wider uppercase">Official</span>
                           </div>
-                          <p className="text-xs text-slate-700 font-bold mt-1">প্রোপ্রাইটর: Robin Kumar | মোবাইল: +880 1721-779396</p>
+                          <p className="text-xs text-slate-800 font-bold mt-1">প্রোপ্রাইটর: Robin Kumar | মোবাইল: +880 1721-779396</p>
                           <p className="text-xs text-slate-600 font-semibold">অফিস: রথপাড়া, ভেড়ামারা, কুষ্টিয়া, বাংলাদেশ — 7040</p>
                         </div>
                       </div>
@@ -2903,42 +3734,140 @@ export default function InvoiceHub({
                     </div>
                   )}
 
-                  {/* Digital Signature Panel & Document Footer */}
-                  <div className="flex flex-col sm:flex-row justify-between items-center sm:items-end pt-6 gap-4 border-t border-slate-200">
-                    <div>
+                  {/* Attached Files / Reference Gallery in Preview */}
+                  {((previewInvoice.data.files && previewInvoice.data.files.length > 0) || previewInvoice.data.fileUrl) && (
+                    <div className="border border-slate-300 rounded-xl p-3 bg-slate-50/60 text-xs space-y-2 shadow-sm no-print">
+                      <span className="font-black uppercase text-slate-900 block tracking-wider text-[11px] flex items-center gap-1.5">
+                        <Paperclip size={13} className="text-slate-700" />
+                        সংযুক্ত রেফারেন্স ও ছবিসমূহ ({previewInvoice.data.files?.length || 1} টি):
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {previewInvoice.data.files && previewInvoice.data.files.length > 0 ? (
+                          previewInvoice.data.files.map((file: any, fidx: number) => (
+                            <a
+                              key={fidx}
+                              href={file.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="bg-white border border-slate-300 hover:border-black p-1.5 rounded flex items-center gap-2 text-[11px] font-bold text-slate-800 hover:bg-slate-100 transition shadow-2xs"
+                            >
+                              {file.type === 'image' || file.url.startsWith('data:image/') ? (
+                                <img src={file.url} alt={file.name} className="w-6 h-6 object-cover rounded border border-slate-300" />
+                              ) : (
+                                <FileText size={16} className="text-indigo-600" />
+                              )}
+                              <span className="max-w-[140px] truncate">{file.name}</span>
+                            </a>
+                          ))
+                        ) : (
+                          <a
+                            href={previewInvoice.data.fileUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="bg-white border border-slate-300 hover:border-black p-1.5 rounded flex items-center gap-2 text-[11px] font-bold text-slate-800"
+                          >
+                            <FileText size={16} className="text-indigo-600" />
+                            <span>{previewInvoice.data.fileName || 'ডকুমেন্ট দেখুন'}</span>
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Digital Seal, Status, and Signature Panel */}
+                  <div className="pt-6 border-t-2 border-slate-900/40 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-center justify-between">
+                    
+                    {/* 1. Status badge & Document authenticity (Clean, no overlapping stamp) */}
+                    <div className="space-y-2 text-center md:text-left flex flex-col items-center md:items-start justify-center p-3 bg-slate-50/70 border border-slate-200 rounded-xl">
                       <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
                         {previewInvoice.type === 'quotations' ? 'কোটেশন স্ট্যাটাস' : 'পেমেন্ট স্ট্যাটাস'}
                       </p>
-                      <span className={`inline-block border px-3 py-1 text-xs font-black uppercase mt-1.5 rounded-md shadow-sm ${
+                      <span className={`inline-block border px-3 py-1 text-xs font-black uppercase rounded-md shadow-xs ${
                         previewInvoice.type === 'quotations' 
                           ? previewInvoice.data.status === 'Converted' ? 'bg-teal-50 border-teal-400 text-teal-900' : 'bg-amber-50 border-amber-400 text-amber-900'
                           : (previewInvoice.data.paymentStatus === 'Paid' || (previewInvoice.type === 'event' && previewInvoice.data.dueAmount === 0) || previewInvoice.type === 'sales') ? 'bg-emerald-50 border-emerald-400 text-emerald-900' : 'bg-rose-50 border-rose-400 text-rose-900'
                       }`}>
                         {previewInvoice.type === 'quotations'
-                          ? (previewInvoice.data.status === 'Converted' ? '✓ কনফার্মড ইভেন্ট (Converted)' : '● প্রস্তাবনা (Quotation)')
-                          : (previewInvoice.data.paymentStatus === 'Paid' || (previewInvoice.type === 'event' && previewInvoice.data.dueAmount === 0) || previewInvoice.type === 'sales') ? '✓ সম্পূর্ণ পরিশোধিত (Paid)' : '● বকেয়া বিল (Due)'}
+                          ? (previewInvoice.data.status === 'Converted' ? '✓ কনফার্মড ইভেন্ট' : '● প্রস্তাবনা কোটেশন')
+                          : (previewInvoice.data.paymentStatus === 'Paid' || (previewInvoice.type === 'event' && previewInvoice.data.dueAmount === 0) || previewInvoice.type === 'sales') ? '✓ সম্পূর্ণ পরিশোধিত' : '● বকেয়া বিল (Due)'}
                       </span>
+                      <p className="text-[9px] text-slate-500 font-semibold mt-1">
+                        অফিসিয়াল সফটওয়্যার জেনারেটেড ডিজিটাল ইনভয়েস
+                      </p>
+                    </div>
+
+                    {/* 2. DEDICATED BLANK/OPEN AREA FOR STATUS RUBBER STAMP (সম্পূর্ণ ফাঁকা ও পরিষ্কার জায়গায় রাবার স্ট্যাম্প) */}
+                    <div className="flex flex-col items-center justify-center p-3 bg-white border border-dashed border-slate-300 rounded-xl min-h-[105px] relative">
+                      <span className="text-[8px] font-black uppercase text-slate-400 tracking-wider mb-1 block">
+                        অফিসিয়াল স্ট্যাটাস সিলমোহর (Status Stamp)
+                      </span>
+                      {getResolvedStatusStamp(previewInvoice) ? (
+                        <div className="py-1 flex items-center justify-center">
+                          <StatusRubberStamp 
+                            type={getResolvedStatusStamp(previewInvoice)!} 
+                            colorTheme={previewStampColor} 
+                            date={previewInvoice.data.date}
+                            size="md"
+                            rotation={-5}
+                          />
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 italic">স্ট্যাম্প প্রযোজ্য নয়</span>
+                      )}
+                    </div>
+
+                    {/* 3. Official Blue/Gold Company Round Seal */}
+                    <div className="flex flex-col items-center justify-center p-2 min-h-[105px]">
+                      {previewSealEnabled && sigSettings.showCompanySeal ? (
+                        <CompanyOfficialSeal 
+                          colorTheme={sigSettings.sealColorTheme || 'royal-blue'} 
+                          date={previewInvoice.data.date}
+                          size="md"
+                          rotation={sigSettings.sealRotation}
+                          texture={sigSettings.sealTexture}
+                          showDate={sigSettings.sealShowDate}
+                        />
+                      ) : (
+                        <div className="text-center text-slate-300 text-[10px] font-bold py-4">
+                          [ অফিসিয়াল সিলমোহর ]
+                        </div>
+                      )}
                     </div>
                     
-                    {/* Official Digital Signature */}
-                    <div className="text-center">
-                      <div className="border-b-2 border-slate-900 pb-1 w-52 mx-auto flex items-center justify-center min-h-[50px]">
-                        {previewInvoice.data.signatureUrl || canvasSignature ? (
+                    {/* 4. Official Digital Signature */}
+                    <div className="text-center flex flex-col items-center justify-center md:items-end p-2">
+                      <div className="border-b-2 border-slate-900 pb-1.5 w-48 sm:w-52 text-center flex items-center justify-center min-h-[55px]">
+                        {previewInvoice.data.signatureUrl || getActiveSignatureUrl() ? (
                           <img 
-                            src={previewInvoice.data.signatureUrl || canvasSignature || ''} 
+                            src={previewInvoice.data.signatureUrl || getActiveSignatureUrl() || ''} 
                             alt="Digital Signature" 
-                            className="max-h-12 object-contain"
+                            className="max-h-14 max-w-full object-contain"
                           />
                         ) : (
-                          <span className={`text-xl text-slate-900 font-bold tracking-wide ${selectedSigFont}`}>
-                            {typedSignature}
-                          </span>
+                          <div className="text-center py-0.5">
+                            <span className={`text-xl text-slate-900 block ${
+                              sigSettings.typedFont === 'font-cursive' 
+                                ? 'italic font-serif tracking-wider font-bold text-slate-950' 
+                                : sigSettings.typedFont === 'font-serif' 
+                                ? 'font-serif font-bold text-slate-900' 
+                                : sigSettings.typedFont === 'font-sans' 
+                                ? 'font-sans font-black text-slate-900' 
+                                : sigSettings.typedFont === 'font-bengali' 
+                                ? 'font-serif font-black text-slate-950' 
+                                : 'font-mono font-bold text-slate-900'
+                            }`}>
+                              {sigSettings.typedName || 'Robin Kumar'}
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-600 block">
+                              {sigSettings.typedDesignation || 'প্রোপ্রাইটর (Proprietor)'}
+                            </span>
+                          </div>
                         )}
                       </div>
-                      <span className="text-[10px] font-black uppercase text-slate-700 block mt-1.5 tracking-wider">
+                      <span className="text-[10px] font-black uppercase text-slate-800 block mt-1.5 tracking-wider">
                         অনুমোদিত স্বাক্ষর (Authorized Signature)
                       </span>
-                      <span className="text-[8px] font-bold text-slate-500 block uppercase">
+                      <span className="text-[8px] font-bold text-slate-500 block uppercase tracking-wider">
                         Rittika Event Management
                       </span>
                     </div>
@@ -3424,6 +4353,46 @@ export default function InvoiceHub({
                     onChange={(e) => setFinalTerms(e.target.value)}
                     className="w-full bg-white border-2 border-black p-2 text-xs font-bold leading-relaxed"
                   />
+                </div>
+
+                {/* Final Bill Multi-File Upload */}
+                <div className="bg-slate-50 border-2 border-black p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black uppercase text-black">
+                      ইভেন্ট সম্পন্নতার স্থিরচিত্র বা চূড়ান্ত বিল ভাউচার (Multiple Files)
+                    </label>
+                    <span className="text-[10px] text-teal-900 font-bold bg-teal-100 px-2 py-0.5 rounded border border-teal-300">
+                      একাধিক ছবি বা পিডিএফ
+                    </span>
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    multiple
+                    onChange={handleFinalInvFileUpload}
+                    className="w-full bg-white border-2 border-black p-2 text-xs cursor-pointer font-bold"
+                  />
+                  {finalInvFiles.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs font-black text-slate-800">
+                        ✓ সংযুক্ত ফাইলসমূহ ({finalInvFiles.length} টি):
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {finalInvFiles.map((ff, idx) => (
+                          <span key={idx} className="text-xs bg-white border-2 border-black text-black px-2 py-1 rounded flex items-center gap-1.5 shadow-[1px_1px_0px_0px_#000]">
+                            <span className="max-w-[150px] truncate font-bold">{ff.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => setFinalInvFiles(prev => prev.filter((_, i) => i !== idx))}
+                              className="text-red-500 hover:text-red-700 font-black text-sm"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -3941,6 +4910,46 @@ export default function InvoiceHub({
                       placeholder="বাজেটের শর্তাবলী লিখুন..."
                     />
                   </div>
+
+                  {/* Multi-file upload for Quotation */}
+                  <div className="bg-slate-50 border-2 border-black p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-black uppercase text-black">
+                        রেফারেন্স ফটো, ড্রাফট বা ডিজাইন সংযুক্তি (Multiple Files)
+                      </label>
+                      <span className="text-[10px] text-yellow-900 font-bold bg-yellow-100 px-2 py-0.5 rounded border border-yellow-300">
+                        একাধিক ছবি বা পিডিএফ আপলোড
+                      </span>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      multiple
+                      onChange={handleQuotationFileUpload}
+                      className="w-full bg-white border-2 border-black p-2 text-xs cursor-pointer font-bold"
+                    />
+                    {qFiles.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <p className="text-xs font-black text-slate-800">
+                          ✓ সংযুক্ত ফাইলসমূহ ({qFiles.length} টি):
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {qFiles.map((qf, idx) => (
+                            <span key={idx} className="text-xs bg-white border-2 border-black text-black px-2 py-1 rounded flex items-center gap-1.5 shadow-[1px_1px_0px_0px_#000]">
+                              <span className="max-w-[150px] truncate font-bold">{qf.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => setQFiles(prev => prev.filter((_, i) => i !== idx))}
+                                className="text-red-500 hover:text-red-700 font-black text-sm"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Section 4: Live Total Budget Summary Calculation Box */}
@@ -4172,6 +5181,217 @@ export default function InvoiceHub({
 
               </div>
             )
+          ) : activeTab === 'all-saved-invoices' ? (
+            
+            /* 🌟 MODULE: COMPREHENSIVE SAVED INVOICES & MEMO ARCHIVE (WITH LIVE EDIT & DELETE & PREVIEW) */
+            <div className="space-y-6" id="all-saved-invoices-archive-view">
+              
+              {/* Archive Header & Search Controls */}
+              <div className="flex flex-col sm:flex-row gap-4 border-2 border-black p-4 bg-white shadow-[3px_3px_0px_0px_#000000] justify-between items-center">
+                <div className="relative w-full sm:w-80">
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search size={15} className="text-slate-500" />
+                  </span>
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="ইনভয়েস নং, গ্রাহকের নাম, মোবাইল বা ইভেন্ট খুঁজুন..."
+                    className="w-full bg-slate-50 border-2 border-black pl-9 pr-3 py-2 text-xs font-bold focus:outline-none focus:bg-white"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-black font-bold text-xs"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                  <span className="text-xs font-black uppercase text-black bg-yellow-300 border border-black px-2.5 py-1 rounded shadow-sm">
+                    মোট সংরক্ষিত: {toBengaliNumber(allSavedInvoicesList.length)} টি
+                  </span>
+                </div>
+              </div>
+
+              {/* Invoices List Display */}
+              <div className="space-y-3" id="saved-invoices-list-container">
+                {allSavedInvoicesList.length === 0 ? (
+                  <div className="py-16 text-center text-sm font-bold text-slate-500 border-4 border-dashed border-black bg-white space-y-3">
+                    <Folder size={40} className="mx-auto text-slate-400" />
+                    <p>কোনো সংরক্ষিত ইনভয়েস বা কোটেশন পাওয়া যায়নি।</p>
+                    <button
+                      onClick={handleOpenNewQuotation}
+                      className="neo-btn px-4 py-2 text-xs bg-yellow-400 font-black uppercase"
+                    >
+                      + নতুন কোটেশন তৈরি করুন
+                    </button>
+                  </div>
+                ) : (
+                  allSavedInvoicesList.map(item => (
+                    <div
+                      key={`${item.type}-${item.id}`}
+                      className="neo-card p-4 sm:p-5 bg-white border-2 border-black hover:shadow-[5px_5px_0px_0px_#000000] transition-all space-y-3"
+                    >
+                      {/* Top Row: Type & Number & Date */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded border border-black shadow-sm ${
+                            item.type === 'quotations' ? 'bg-amber-300 text-black' :
+                            item.type === 'event' ? 'bg-teal-300 text-black' :
+                            item.type === 'sales' ? 'bg-emerald-300 text-black' :
+                            item.type === 'rental' ? 'bg-blue-300 text-black' :
+                            'bg-rose-300 text-black'
+                          }`}>
+                            {item.typeLabel}
+                          </span>
+                          <span className="font-mono font-black text-xs text-slate-900">
+                            নং: {item.number}
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-500 font-mono">
+                            📅 {item.date}
+                          </span>
+                        </div>
+
+                        {/* Status Badge */}
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded border ${
+                            item.status === 'Converted' ? 'bg-teal-100 border-teal-600 text-teal-900' :
+                            item.status === 'Paid' || item.due === 0 ? 'bg-emerald-100 border-emerald-600 text-emerald-900' :
+                            item.status === 'Due' ? 'bg-rose-100 border-rose-600 text-rose-900' :
+                            item.status === 'Partial' ? 'bg-amber-100 border-amber-600 text-amber-900' :
+                            'bg-slate-100 border-slate-400 text-slate-800'
+                          }`}>
+                            {item.status === 'Converted' ? '✓ কনভার্টেড' :
+                             item.status === 'Paid' || item.due === 0 ? '✓ পরিশোধিত (Paid)' :
+                             item.status === 'Due' ? '● বকেয়া (Due)' :
+                             item.status === 'Partial' ? '◐ আংশিক (Partial)' :
+                             item.status === 'Fixed' ? 'ফিক্সড বাজেট' : 'আনুমানিক এস্টিমেট'}
+                          </span>
+                          {item.files.length > 0 && (
+                            <span className="text-[10px] bg-indigo-50 border border-indigo-300 text-indigo-800 font-bold px-1.5 py-0.5 rounded flex items-center gap-1">
+                              📎 {item.files.length} ফাইল
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Middle Row: Name / Party / Financials */}
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center text-xs">
+                        <div className="sm:col-span-6 space-y-1">
+                          <h4 className="font-black text-sm text-slate-950 flex items-center gap-1.5">
+                            {item.name}
+                          </h4>
+                          <p className="text-slate-700 font-bold flex items-center gap-1">
+                            <User size={12} className="text-slate-500" />
+                            <span>{item.partyName}</span>
+                            {item.partyMobile && (
+                              <span className="text-slate-500 font-mono text-[11px]">({item.partyMobile})</span>
+                            )}
+                          </p>
+                        </div>
+
+                        {/* Financial Amounts breakdown */}
+                        <div className="sm:col-span-6 flex items-center justify-start sm:justify-end gap-3 sm:gap-4 flex-wrap bg-slate-50 p-2 border border-slate-200 rounded font-mono">
+                          <div className="text-left sm:text-right">
+                            <span className="text-[10px] text-slate-500 uppercase block font-bold">মোট বিল</span>
+                            <span className="font-black text-sm text-slate-900">{formatCurrency(item.amount)}</span>
+                          </div>
+                          {item.type !== 'purchase' && (
+                            <>
+                              <div className="text-left sm:text-right">
+                                <span className="text-[10px] text-emerald-700 uppercase block font-bold">পরিশোধ</span>
+                                <span className="font-black text-xs text-emerald-800">{formatCurrency(item.paid)}</span>
+                              </div>
+                              {item.due > 0 && (
+                                <div className="text-left sm:text-right">
+                                  <span className="text-[10px] text-rose-700 uppercase block font-bold">বকেয়া</span>
+                                  <span className="font-black text-xs text-rose-800">{formatCurrency(item.due)}</span>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Bottom Row: Actions (Preview, Edit, WhatsApp, Delete) */}
+                      <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {/* 👁️ View & Print */}
+                          <button
+                            onClick={() => setPreviewInvoice({ id: item.id, type: item.type as any, data: item.originalData })}
+                            className="neo-btn px-3 py-1.5 text-xs bg-yellow-400 hover:bg-yellow-300 font-black uppercase flex items-center gap-1 shadow-[1px_1px_0px_0px_#000000]"
+                            title="ইনভয়েস প্রিভিউ ও প্রিন্ট"
+                          >
+                            <Eye size={13} />
+                            <span>প্রিভিউ ও প্রিন্ট</span>
+                          </button>
+
+                          {/* ✏️ Edit (Full Form Editor) */}
+                          <button
+                            onClick={() => setEditingTarget({ type: item.type, data: item.originalData })}
+                            className="neo-btn px-3 py-1.5 text-xs bg-indigo-500 hover:bg-indigo-600 text-white font-black uppercase flex items-center gap-1 shadow-[1px_1px_0px_0px_#000000]"
+                            title="ইনভয়েসের বিস্তারিত তথ্য এডিট করুন"
+                          >
+                            <Edit3 size={13} />
+                            <span>এডিট</span>
+                          </button>
+
+                          {/* 💬 WhatsApp Share */}
+                          {item.partyMobile && (
+                            <button
+                              onClick={() => triggerShare(item.originalData, item.type as any)}
+                              className="neo-btn px-3 py-1.5 text-xs bg-emerald-500 hover:bg-emerald-600 text-white font-black uppercase flex items-center gap-1 shadow-[1px_1px_0px_0px_#000000]"
+                              title="হোয়াটসঅ্যাপে পাঠান"
+                            >
+                              <Share2 size={13} />
+                              <span>হোয়াটসঅ্যাপ</span>
+                            </button>
+                          )}
+
+                          {/* Convert to event for quotations */}
+                          {item.type === 'quotations' && item.status !== 'Converted' && (
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`আপনি কি "${item.name}" কোটেশনটিকে কনফার্মড ইভেন্টে রূপান্তর করতে চান?`)) {
+                                  if (onConvertQuotationToEvent) {
+                                    onConvertQuotationToEvent(item.originalData);
+                                  }
+                                }
+                              }}
+                              className="neo-btn px-3 py-1.5 text-xs bg-teal-400 hover:bg-teal-300 font-black uppercase flex items-center gap-1 shadow-[1px_1px_0px_0px_#000000]"
+                              title="কোটেশন কনফার্মড ইভেন্টে রূপান্তর"
+                            >
+                              <CheckCircle2 size={13} />
+                              <span>কনভার্ট</span>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* 🗑️ Delete Button */}
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`আপনি কি নিশ্চিত যে "${item.number}" ইনভয়েসটি মুছে ফেলতে চান?`)) {
+                              if (item.type === 'quotations') onDeleteQuotation(item.id);
+                              else if (item.type === 'event') onDeleteEventInvoice(item.id);
+                              else if (item.type === 'sales') onDeleteSalesInvoice(item.id);
+                              else if (item.type === 'rental') onDeleteRentalInvoice(item.id);
+                              else if (item.type === 'purchase') onDeletePurchaseInvoice(item.id);
+                            }
+                          }}
+                          className="neo-btn px-2.5 py-1.5 text-xs bg-rose-100 hover:bg-rose-600 hover:text-white text-rose-800 font-black uppercase flex items-center gap-1 shadow-[1px_1px_0px_0px_#000000]"
+                          title="ইনভয়েস মুছে ফেলুন"
+                        >
+                          <Trash2 size={13} />
+                          <span>ডিলিট</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           ) : (
             
             /* Otherwise, show standard list view with explorer & search for Document Center, Purchase, etc. */
@@ -4437,14 +5657,40 @@ export default function InvoiceHub({
               </div>
 
               <div>
-                <label className="uppercase block mb-1">চালান ফাইল আপলোড (PDF / JPG / PNG)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="uppercase block font-bold text-xs">চালান ও রসিদ ফাইল আপলোড (Multiple Files)</label>
+                  <span className="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                    একাধিক ফাইল নির্বাচন করা যাবে
+                  </span>
+                </div>
                 <input
                   type="file"
                   accept="image/*,application/pdf"
+                  multiple
                   onChange={handlePurchaseFileUpload}
                   className="w-full bg-slate-50 border-2 border-black p-1.5 font-bold cursor-pointer"
                 />
-                {pFileName && <p className="text-[10px] text-emerald-700 mt-1">✓ {pFileName}</p>}
+                {pFiles.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    <p className="text-[11px] font-black text-emerald-800">
+                      ✓ মোট {pFiles.length} টি ফাইল সংযুক্ত:
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {pFiles.map((pf, idx) => (
+                        <span key={idx} className="text-[10px] bg-emerald-50 border border-emerald-300 text-emerald-800 px-2 py-0.5 rounded flex items-center gap-1">
+                          <span className="max-w-[120px] truncate">{pf.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => setPFiles(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-rose-600 hover:text-rose-800 font-black"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="sm:col-span-2 pt-4 border-t border-slate-200 flex justify-end gap-2">
@@ -4468,164 +5714,229 @@ export default function InvoiceHub({
         </div>
       )}
 
-      {/* 🌟 DIALOG: DIGITAL SIGNATURE CONFIGURATOR */}
-      {isSignOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 overflow-y-auto no-print">
-          <div className="bg-white border-4 border-black max-w-md w-full p-6 shadow-[8px_8px_0px_0px_#000000] relative">
-            <button 
-              onClick={() => setIsSignOpen(false)}
-              className="absolute top-4 right-4 p-1.5 border-2 border-black bg-white hover:bg-slate-100 text-black transition shadow-[1px_1px_0px_0px_#000000] cursor-pointer"
-            >
-              <X size={14} className="stroke-[2.5]" />
-            </button>
+      {/* 🌟 DIGITAL SIGNATURE & OFFICIAL RUBBER SEAL CONFIGURATOR MODAL */}
+      <DigitalSignatureModal
+        isOpen={isSignOpen}
+        onClose={() => setIsSignOpen(false)}
+        settings={sigSettings}
+        onSaveSettings={(newSettings) => {
+          setSigSettings(newSettings);
+          setPreviewSealEnabled(newSettings.showCompanySeal);
+          setPreviewStampColor(newSettings.statusStampColorTheme || 'royal-blue');
+        }}
+      />
 
-            <h3 className="text-lg font-black uppercase italic text-black border-b-2 border-black pb-2 mb-4">অনুমোদিত ডিজিটাল স্বাক্ষর</h3>
-            
-            <div className="space-y-4 text-xs font-black">
-              
-              <div>
-                <label className="block mb-1">টাইপ স্বাক্ষর (Type Name)</label>
-                <input
-                  type="text"
-                  value={typedSignature}
-                  onChange={(e) => {
-                    setTypedSignature(e.target.value);
-                    setCanvasSignature(null); // Type overrides drawn canvas
-                  }}
-                  className="w-full bg-slate-50 border-2 border-black p-2 font-bold text-sm"
-                  placeholder="যেমন: রিত্তিকা ইভেন্ট ম্যানেজমেন্ট"
-                />
-              </div>
-
-              <div>
-                <label className="block mb-1">স্বাক্ষর ফন্ট (Font style)</label>
-                <div className="flex gap-2">
-                  {[
-                    { id: 'font-serif', label: 'Serif Classic' },
-                    { id: 'font-sans', label: 'Sans Simple' },
-                    { id: 'font-mono', label: 'Mono Tech' }
-                  ].map(f => (
-                    <button
-                      key={f.id}
-                      onClick={() => setSelectedSigFont(f.id as any)}
-                      className={`flex-1 p-2 border-2 border-black text-center ${
-                        selectedSigFont === f.id ? 'bg-yellow-400 font-black' : 'bg-white font-bold'
-                      }`}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block mb-1">হাতে আঁকুন (Draw Signature on Canvas)</label>
-                <div className="border-2 border-black bg-slate-50 relative overflow-hidden">
-                  <canvas
-                    ref={sigCanvasRef}
-                    width={380}
-                    height={120}
-                    onMouseDown={startDrawing}
-                    onMouseMove={draw}
-                    onMouseUp={stopDrawing}
-                    onMouseLeave={stopDrawing}
-                    className="w-full cursor-crosshair bg-white"
-                  />
-                </div>
-                <div className="flex justify-end gap-2 mt-1.5">
-                  <button
-                    onClick={clearCanvas}
-                    className="text-[10px] uppercase font-black text-rose-600 border border-black px-2 py-1 bg-white hover:bg-slate-50"
-                  >
-                    মুছে ফেলুন (Clear Canvas)
-                  </button>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-slate-200 flex justify-end gap-2">
-                <button
-                  onClick={() => setIsSignOpen(false)}
-                  className="neo-btn px-5 py-2 bg-yellow-400 text-black uppercase"
-                >
-                  স্বাক্ষর নিশ্চিত করুন (Apply Signature)
-                </button>
-              </div>
-
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 🌟 DIALOG: SHARE CONTROLLER */}
+      {/* 🌟 DIALOG: ADVANCED SHARE & PDF DISPATCH CONTROLLER */}
       {sharingInvoice && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 overflow-y-auto no-print">
-          <div className="bg-white border-4 border-black max-w-sm w-full p-6 shadow-[8px_8px_0px_0px_#000000] relative">
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center p-4 z-50 overflow-y-auto no-print backdrop-blur-xs">
+          <div className="bg-white border-4 border-black max-w-lg w-full p-6 shadow-[10px_10px_0px_0px_#000000] relative animate-in fade-in zoom-in duration-150">
             <button 
-              onClick={() => setSharingInvoice(null)}
-              className="absolute top-4 right-4 p-1.5 border-2 border-black bg-white hover:bg-slate-100 text-black transition shadow-[1px_1px_0px_0px_#000000] cursor-pointer"
+              onClick={() => {
+                setSharingInvoice(null);
+                setCopiedLinkToast(false);
+              }}
+              className="absolute top-4 right-4 p-1.5 border-2 border-black bg-white hover:bg-slate-100 text-black transition shadow-[2px_2px_0px_0px_#000000] cursor-pointer"
+              title="বন্ধ করুন"
             >
-              <X size={14} />
+              <X size={16} />
             </button>
 
-            <h3 className="text-base font-black uppercase italic text-black border-b-2 border-black pb-2 mb-4">চালানটি গ্রাহকের কাছে প্রেরণ করুন</h3>
+            <div className="flex items-center gap-2 border-b-3 border-black pb-3 mb-4">
+              <div className="p-2 bg-emerald-400 border-2 border-black rounded shadow-[2px_2px_0px_0px_#000000]">
+                <Share2 size={18} className="text-black" />
+              </div>
+              <div>
+                <h3 className="text-base font-black uppercase text-black leading-tight">
+                  ইনভয়েস বিল ও PDF ফাইল সরাসরি শেয়ার
+                </h3>
+                <p className="text-xs text-slate-600 font-bold">
+                  WhatsApp ও ইমেইলে গ্রাহককে অফিসিয়াল কপি প্রেরণ করুন
+                </p>
+              </div>
+            </div>
 
+            {/* Document summary strip */}
+            <div className="bg-slate-100 border-2 border-black p-3 mb-4 text-xs font-bold space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600">গ্রাহক / ইভেন্ট:</span>
+                <span className="font-black text-black">{sharingInvoice.name}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600">ডকুমেন্ট / বিল নং:</span>
+                <span className="font-mono font-black text-indigo-700 bg-indigo-50 px-1.5 py-0.5 border border-indigo-200 rounded">
+                  {sharingInvoice.id}
+                </span>
+              </div>
+              {(sharingInvoice.total || 0) > 0 && (
+                <div className="flex items-center justify-between pt-1 border-t border-slate-300">
+                  <span className="text-slate-600">মোট বিল: <span className="font-black text-black">{formatCurrency(sharingInvoice.total || 0)}</span></span>
+                  <span className="text-emerald-700 font-black">পরিশোধ: {formatCurrency(sharingInvoice.paid || 0)}</span>
+                  {(sharingInvoice.due || 0) > 0 ? (
+                    <span className="text-rose-600 font-black">বকেয়া: {formatCurrency(sharingInvoice.due || 0)}</span>
+                  ) : (
+                    <span className="text-emerald-700 font-black bg-emerald-100 px-1 rounded">পরিশোধিত ✓</span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Method switcher */}
             <div className="space-y-4 text-xs font-black">
               <div>
-                <label className="block mb-1">গ্রাহকের নাম: <span className="text-indigo-600">{sharingInvoice.name}</span></label>
-                <label className="block mt-1 mb-1">চালান নং: <span className="font-mono text-slate-700">{sharingInvoice.id}</span></label>
-              </div>
-
-              <div>
-                <label className="block mb-1">প্রেরণের মাধ্যম</label>
-                <div className="flex gap-2">
+                <label className="block mb-1.5 text-slate-700 uppercase">প্রেরণের মাধ্যম বেছে নিন</label>
+                <div className="grid grid-cols-2 gap-2">
                   <button
+                    type="button"
                     onClick={() => {
                       setShareMethod('whatsapp');
-                      setShareTarget(sharingInvoice.mobile);
+                      setShareTarget(sharingInvoice.mobile || '');
                     }}
-                    className={`flex-1 py-2 border-2 border-black text-center flex items-center justify-center gap-1.5 ${
-                      shareMethod === 'whatsapp' ? 'bg-emerald-300' : 'bg-white'
+                    className={`py-2.5 px-3 border-2 border-black text-center flex items-center justify-center gap-2 font-black transition cursor-pointer shadow-[2px_2px_0px_0px_#000000] ${
+                      shareMethod === 'whatsapp' ? 'bg-emerald-400 text-black' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
                     }`}
                   >
-                    <Send size={12} />
-                    WhatsApp Share
+                    <Send size={15} />
+                    <span>WhatsApp শেয়ার</span>
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       setShareMethod('email');
-                      setShareTarget('client@email.com');
+                      setShareTarget(sharingInvoice.email || 'client@example.com');
                     }}
-                    className={`flex-1 py-2 border-2 border-black text-center flex items-center justify-center gap-1.5 ${
-                      shareMethod === 'email' ? 'bg-indigo-300' : 'bg-white'
+                    className={`py-2.5 px-3 border-2 border-black text-center flex items-center justify-center gap-2 font-black transition cursor-pointer shadow-[2px_2px_0px_0px_#000000] ${
+                      shareMethod === 'email' ? 'bg-indigo-400 text-black' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
                     }`}
                   >
-                    <Mail size={12} />
-                    Email PDF Invoice
+                    <Mail size={15} />
+                    <span>Email শেয়ার</span>
                   </button>
                 </div>
               </div>
 
+              {/* Target recipient input */}
               <div>
-                <label className="block mb-1">
-                  {shareMethod === 'whatsapp' ? 'হোয়াটসঅ্যাপ মোবাইল নম্বর' : 'গ্রাহক ইমেইল এড্রেস'}
+                <label className="block mb-1 text-slate-800 font-black">
+                  {shareMethod === 'whatsapp' ? 'হোয়াটসঅ্যাপ মোবাইল নম্বর (যেমন: 017xxxxxxxx)' : 'গ্রাহক ইমেইল এড্রেস'}
                 </label>
                 <input
                   type="text"
                   value={shareTarget}
                   onChange={(e) => setShareTarget(e.target.value)}
-                  className="w-full bg-slate-50 border-2 border-black p-2 font-bold font-mono"
+                  placeholder={shareMethod === 'whatsapp' ? '০১৭xxxxxxxx' : 'client@email.com'}
+                  className="w-full bg-slate-50 border-2 border-black p-2.5 font-bold font-mono text-sm shadow-[inset_1px_1px_0px_0px_#000000]"
                 />
               </div>
 
-              <button
-                onClick={handleShareSubmit}
-                className="w-full neo-btn py-2 bg-yellow-400 text-black font-black uppercase"
-              >
-                পাঠিয়ে দিন (Share Now)
-              </button>
+              {/* Primary Fast Action Buttons */}
+              <div className="space-y-2 pt-2">
+                {shareMethod === 'whatsapp' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleDirectWhatsAppShareWithPdf}
+                      className="w-full neo-btn py-3 bg-emerald-500 hover:bg-emerald-400 text-white font-black uppercase text-sm flex items-center justify-center gap-2 shadow-[3px_3px_0px_0px_#000000] cursor-pointer"
+                    >
+                      <Send size={16} />
+                      <span>১-ক্লিকে PDF ডাউনলোড ও WhatsApp ওপেন</span>
+                    </button>
+
+                    {/* Native Web Share with File attachment (ideal for mobile WhatsApp) */}
+                    <button
+                      type="button"
+                      onClick={handleNativeFileShare}
+                      disabled={isSharingNative}
+                      className="w-full neo-btn py-2.5 bg-cyan-400 hover:bg-cyan-300 text-black font-black uppercase text-xs flex items-center justify-center gap-2 shadow-[2px_2px_0px_0px_#000000] cursor-pointer disabled:opacity-50"
+                    >
+                      <Smartphone size={15} />
+                      <span>{isSharingNative ? 'PDF ফাইল তৈরি হচ্ছে...' : '📱 ফোনে সরাসরি WhatsApp-এ PDF ফাইল সহ পাঠান'}</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleDirectEmailShareWithPdf}
+                    className="w-full neo-btn py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase text-sm flex items-center justify-center gap-2 shadow-[3px_3px_0px_0px_#000000] cursor-pointer"
+                  >
+                    <Mail size={16} />
+                    <span>১-ক্লিকে PDF ডাউনলোড ও ইমেইল ক্লায়েন্ট ওপেন</span>
+                  </button>
+                )}
+
+                {/* Auxiliary quick action buttons */}
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (previewInvoice) {
+                        handleDirectPdfDownload();
+                      } else {
+                        // If preview invoice not already set, open preview
+                        const found = quotations.find(q => q.quotationNo === sharingInvoice.id) ||
+                          eventInvoices.find(e => e.invoiceNo === sharingInvoice.id) ||
+                          salesInvoices.find(s => s.invoiceNo === sharingInvoice.id) ||
+                          rentalInvoices.find(r => r.invoiceNo === sharingInvoice.id);
+                        if (found) {
+                          setPreviewInvoice({ id: sharingInvoice.id, type: sharingInvoice.type as any, data: found });
+                        }
+                        handleDirectPdfDownload();
+                      }
+                    }}
+                    className="py-2 px-2.5 border-2 border-black bg-yellow-400 hover:bg-yellow-300 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow-[2px_2px_0px_0px_#000000] cursor-pointer"
+                  >
+                    <Download size={13} />
+                    <span>📥 PDF ডাউনলোড</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = buildShareText(sharingInvoice);
+                      navigator.clipboard.writeText(text);
+                      setCopiedLinkToast(true);
+                      setTimeout(() => setCopiedLinkToast(false), 3000);
+                    }}
+                    className="py-2 px-2.5 border-2 border-black bg-white hover:bg-slate-100 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow-[2px_2px_0px_0px_#000000] cursor-pointer"
+                  >
+                    {copiedLinkToast ? (
+                      <>
+                        <CheckCheck size={13} className="text-emerald-600" />
+                        <span className="text-emerald-700">কপি হয়েছে!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={13} />
+                        <span>📋 মেসেজ টেক্সট কপি</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Informative footer note */}
+              <div className="p-2.5 bg-amber-50 border border-amber-300 rounded text-[11px] text-amber-900 font-semibold leading-relaxed flex items-start gap-1.5">
+                <AlertCircle size={14} className="text-amber-700 shrink-0 mt-0.5" />
+                <span>
+                  <strong>টিপস:</strong> বোতামে ক্লিক করলে মূল <strong>PDF ফাইলটি</strong> স্বয়ংক্রিয়ভাবে আপনার ডিভাইসে ডাউনলোড হবে এবং WhatsApp চ্যাট ওপেন হয়ে যাবে। আপনি শুধু চ্যাটে ফাইলটি এটাচ/ড্রপ করলেই গ্রাহক মূল PDF পেয়ে যাবেন।
+                </span>
+              </div>
             </div>
           </div>
         </div>
+      )}
+
+      {/* 🌟 MODAL: FULL INVOICE & QUOTATION EDIT MODAL */}
+      {editingTarget && (
+        <InvoiceEditModal
+          isOpen={!!editingTarget}
+          onClose={() => setEditingTarget(null)}
+          target={editingTarget}
+          onUpdateQuotation={onUpdateQuotation}
+          onUpdateEventInvoice={onUpdateEventInvoice}
+          onUpdateSalesInvoice={onUpdateSalesInvoice}
+          onUpdateRentalInvoice={onUpdateRentalInvoice}
+          onUpdatePurchaseInvoice={onUpdatePurchaseInvoice}
+        />
       )}
 
     </div>

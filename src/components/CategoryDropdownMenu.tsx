@@ -39,6 +39,7 @@ export interface CategoryGroup {
     color: string;
     minRole: 'Viewer' | 'Staff' | 'Manager' | 'Admin';
     highlight?: boolean;
+    keywords?: string[];
   }[];
 }
 
@@ -68,7 +69,8 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
         icon: LayoutDashboard,
         color: 'text-teal-400',
         minRole: 'Staff',
-        highlight: true
+        highlight: true,
+        keywords: ['ড্যাশবোর্ড', 'ওভারভিউ', 'সারসংক্ষেপ', 'গ্রাফ', 'চার্ট', 'dashboard', 'analytics', 'summary', 'stats']
       },
       {
         id: 'profit-loss',
@@ -76,7 +78,8 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
         subLabel: 'আয়, ব্যয়, মোট লাভ ও ব্যালেন্স শিট',
         icon: BarChart3,
         color: 'text-emerald-400',
-        minRole: 'Admin'
+        minRole: 'Admin',
+        keywords: ['লাভ', 'ক্ষতি', 'আর্থিক রিপোর্ট', 'ব্যালেন্স শিট', 'আয়', 'ব্যয়', 'profit', 'loss', 'balance sheet', 'finance', 'revenue']
       }
     ]
   },
@@ -92,7 +95,8 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
         subLabel: 'সব মালামালের তালিকা, মূল্য ও বর্তমান পরিমাণ',
         icon: Package,
         color: 'text-sky-400',
-        minRole: 'Staff'
+        minRole: 'Staff',
+        keywords: ['স্টক', 'মালামাল', 'ইনভেন্টরি', 'পণ্য', 'রেজিস্ট্রি', 'গুদাম', 'stock', 'inventory', 'items', 'registry']
       },
       {
         id: 'purchase',
@@ -100,7 +104,8 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
         subLabel: 'সাপ্লায়ার বিল ও নতুন স্টক ইনওয়ার্ড',
         icon: ShoppingCart,
         color: 'text-indigo-400',
-        minRole: 'Manager'
+        minRole: 'Manager',
+        keywords: ['ক্রয়', 'কেনাকাটা', 'সাপ্লায়ার বিল', 'ইনওয়ার্ড', 'purchase', 'buy', 'supplier invoice', 'po']
       },
       {
         id: 'sales',
@@ -108,7 +113,8 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
         subLabel: 'আইটেম বিক্রয় ও সরাসরি পেমেন্ট ইনভয়েস',
         icon: TrendingUp,
         color: 'text-emerald-400',
-        minRole: 'Manager'
+        minRole: 'Manager',
+        keywords: ['বিক্রয়', 'ক্যাশ মেমো', 'সেলস', 'সরাসরি বিক্রয়', 'sales', 'cash memo', 'selling', 'pos']
       },
       {
         id: 'rental',
@@ -116,7 +122,8 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
         subLabel: 'ডেকোরেশন পণ্য ভাড়া ট্র্যাকিং ও স্টক রেন্টাল',
         icon: CalendarClock,
         color: 'text-amber-400',
-        minRole: 'Staff'
+        minRole: 'Staff',
+        keywords: ['ভাড়া', 'রেন্টাল', 'ফেরত', 'ডেকোরেশন ভাড়া', 'বকেয়া মালামাল', 'rental', 'rent out', 'return']
       },
       {
         id: 'damage',
@@ -124,7 +131,8 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
         subLabel: 'নষ্ট, ভাঙা বা হারানো পণ্যের হিসাব',
         icon: ShieldAlert,
         color: 'text-rose-400',
-        minRole: 'Staff'
+        minRole: 'Staff',
+        keywords: ['ক্ষতিগ্রস্থ', 'মেরামত', 'নষ্ট', 'ভাঙা', 'হারানো', 'ড্যামেজ', 'damage', 'repair', 'lost items']
       }
     ]
   },
@@ -140,7 +148,8 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
         subLabel: 'ইভেন্ট বুকিং, শিডিউল ও কর্মী দায়িত্ব',
         icon: ClipboardList,
         color: 'text-teal-400',
-        minRole: 'Staff'
+        minRole: 'Staff',
+        keywords: ['ইভেন্ট', 'কর্মী', 'শিডিউল', 'দায়িত্ব', 'বুকিং', 'বিয়ে', 'জন্মদিন', 'event', 'booking', 'schedule']
       },
       {
         id: 'event-projects',
@@ -148,16 +157,18 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
         subLabel: 'স্টেজ ডিজাইন ও প্রজেক্ট ওয়াইজ মালামাল',
         icon: ClipboardList,
         color: 'text-indigo-400',
-        minRole: 'Manager'
+        minRole: 'Manager',
+        keywords: ['প্রজেক্ট', 'প্যাকেজ', 'স্টেজ ডিজাইন', 'ইভেন্ট প্রজেক্ট', 'package', 'stage design', 'project']
       },
       {
         id: 'invoice-hub',
-        label: 'ইনভয়েস ও ডকুমেন্ট হাব',
-        subLabel: 'কোটেশন, ফাইনাল বিল, বিক্রয় ও রেন্টাল মেমো',
+        label: 'ইনভয়েস, কোটেশন ও সিলমোহর হাব',
+        subLabel: 'কোটেশন বিল, ফাইনাল ইনভয়েস, ডিজিটাল সিলমোহর ও স্বাক্ষর',
         icon: FileText,
         color: 'text-emerald-400',
         minRole: 'Manager',
-        highlight: true
+        highlight: true,
+        keywords: ['ইনভয়েস', 'কোটেশন', 'বিল', 'সিলমোহর', 'স্বাক্ষর', 'স্ট্যাম্প', 'মেমো', 'রশিদ', 'invoice', 'quotation', 'bill', 'seal', 'stamp', 'signature']
       },
       {
         id: 'customer-timeline',
@@ -165,7 +176,8 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
         subLabel: 'গ্রাহকের সম্পূর্ণ লেনদেন টাইমলাইন ও বকেয়া',
         icon: RefreshCw,
         color: 'text-amber-400',
-        minRole: 'Manager'
+        minRole: 'Manager',
+        keywords: ['কাস্টমার লেজার', 'টাইমলাইন', 'লেনদেন', 'বকেয়া হিসাব', 'গ্রাহক হিস্ট্রি', 'customer ledger', 'timeline', 'due statement']
       }
     ]
   },
@@ -181,7 +193,8 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
         subLabel: 'ক্লায়েন্ট ডিরেক্টরি ও ভেন্ডর কন্টাক্টস',
         icon: Users,
         color: 'text-cyan-400',
-        minRole: 'Manager'
+        minRole: 'Manager',
+        keywords: ['কাস্টমার', 'ক্লায়েন্ট', 'ভেন্ডর', 'সাপ্লায়ার', 'কন্টাক্টস', 'ফোন নাম্বার', 'contacts', 'customers', 'suppliers', 'crm']
       },
       {
         id: 'hr',
@@ -189,7 +202,8 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
         subLabel: 'দৈনিক হাজিরা, বেতন ও বোনাস ভাউচার',
         icon: UserCheck,
         color: 'text-rose-400',
-        minRole: 'Admin'
+        minRole: 'Admin',
+        keywords: ['এইচআর', 'হাজিরা', 'বেতন', 'পেরোল', 'বোনাস', 'স্টাফ তালিকা', 'hr', 'attendance', 'payroll', 'salary', 'staff']
       },
       {
         id: 'logistics',
@@ -197,7 +211,8 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
         subLabel: 'গাড়ি ট্রিপ, জ্বালানি ও মালামাল পরিবহন',
         icon: Truck,
         color: 'text-blue-400',
-        minRole: 'Staff'
+        minRole: 'Staff',
+        keywords: ['লজিস্টিকস', 'যানবাহন', 'গাড়ি', 'ট্রিপ', 'জ্বালানি', 'তেল খরচ', 'মালামাল পরিবহন', 'logistics', 'vehicle', 'transport', 'fuel']
       }
     ]
   },
@@ -210,11 +225,12 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
       {
         id: 'portal',
         label: 'পাবলিক পোর্টাল ও ডেকোরেশন শোকেস',
-        subLabel: 'ফটো গ্যালারি, বুকিং ফর্ম ও অফলাইন স্লাইডশো',
-        icon: FileText,
-        color: 'text-purple-400',
+        subLabel: 'ফটো গ্যালারি, বুকিং ফর্ম, স্লাইডশো ও ভিডিও জেনারেটর',
+        icon: Sparkles,
+        color: 'text-amber-400',
         minRole: 'Viewer',
-        highlight: true
+        highlight: true,
+        keywords: ['হোমপেজ', 'পোর্টাল', 'পাবলিক শোকেস', 'ফটো গ্যালারি', 'স্লাইডশো', 'ভিডিও', 'বুকিং ফর্ম', 'হোম', 'portal', 'home', 'gallery', 'slideshow', 'video']
       },
       {
         id: 'expense',
@@ -222,7 +238,8 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
         subLabel: 'দৈনিক অফিস ও অপারেশনাল খরচ রেজিস্টার',
         icon: CreditCard,
         color: 'text-pink-400',
-        minRole: 'Manager'
+        minRole: 'Manager',
+        keywords: ['খরচ', 'ভাউচার', 'অফিস খরচ', 'দৈনিক খরচ', 'বিল ভাউচার', 'expense', 'voucher', 'spending', 'daily expense']
       },
       {
         id: 'users',
@@ -230,7 +247,8 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
         subLabel: 'স্টাফ অনুমতি, রোল অ্যাসাইন ও পাসওয়ার্ড',
         icon: ShieldCheck,
         color: 'text-amber-400',
-        minRole: 'Admin'
+        minRole: 'Admin',
+        keywords: ['ইউজার', 'রোল', 'অনুমোদন', 'অ্যাডমিন', 'পাসওয়ার্ড', 'সিকিউরিটি', 'users', 'roles', 'security', 'permissions']
       }
     ]
   }
@@ -260,13 +278,9 @@ export default function CategoryDropdownMenu({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  // Focus search when opened
+  // Clean search filter when closed (NO auto-focus when opened to keep virtual keyboard closed)
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 50);
-    } else {
+    if (!isOpen) {
       setSearchFilter('');
     }
   }, [isOpen]);
@@ -285,17 +299,18 @@ export default function CategoryDropdownMenu({
   // Find active module details
   const activeModule = CATEGORY_GROUPS.flatMap(g => g.modules).find(m => m.id === activeTab);
 
-  // Filter groups by search query
+  // Filter groups by global search query matching titles, descriptions, keywords & categories
   const filteredGroups = CATEGORY_GROUPS.map(group => {
     const matchedModules = group.modules.filter(mod => {
       if (!searchFilter.trim()) return true;
-      const q = searchFilter.toLowerCase();
-      return (
-        mod.label.toLowerCase().includes(q) ||
-        mod.subLabel.toLowerCase().includes(q) ||
-        group.groupTitle.toLowerCase().includes(q) ||
-        mod.id.toLowerCase().includes(q)
-      );
+      const q = searchFilter.toLowerCase().trim();
+      const hasTitleMatch = mod.label.toLowerCase().includes(q);
+      const hasSubMatch = mod.subLabel.toLowerCase().includes(q);
+      const hasGroupMatch = group.groupTitle.toLowerCase().includes(q) || group.groupTitleEn.toLowerCase().includes(q);
+      const hasIdMatch = mod.id.toLowerCase().includes(q);
+      const hasKeywordMatch = mod.keywords?.some(k => k.toLowerCase().includes(q));
+      
+      return hasTitleMatch || hasSubMatch || hasGroupMatch || hasIdMatch || hasKeywordMatch;
     });
     return {
       ...group,

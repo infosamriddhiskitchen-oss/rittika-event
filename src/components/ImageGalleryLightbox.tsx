@@ -11,35 +11,41 @@ import {
   Maximize2, 
   Minimize2, 
   Download, 
-  Share2, 
-  Trash2, 
   Info, 
   Layers, 
   Calendar, 
   User, 
   Sparkles, 
-  Check, 
   Settings2, 
   Volume2, 
   VolumeX, 
   Palette, 
-  DollarSign, 
   Tag, 
   Move,
   Clock,
   Sliders,
   Film,
-  Video,
-  PlayCircle,
-  Loader2
+  ArrowLeft,
+  CheckCircle2,
+  Share2
 } from 'lucide-react';
 import { toBengaliNumber, formatCurrency } from '../utils';
-import { SlideshowTransition } from '../types';
+import { SlideshowTransition, PortfolioPhotoDetail } from '../types';
 import { 
   exportPresentationToPDF, 
   exportStandaloneHTMLSlideshow,
-  exportPresentationToVideo 
+  exportPresentationToVideo,
+  VideoExportResult
 } from '../utils/presentationExporter';
+
+export interface GalleryPhotoDetail {
+  id: string;
+  url: string;
+  title?: string;
+  description?: string;
+  estimatedCost?: number;
+  highlightTags?: string[];
+}
 
 export interface GalleryMediaItem {
   id: string;
@@ -47,6 +53,7 @@ export interface GalleryMediaItem {
   category?: string;
   url: string;
   images?: string[]; // Multiple photos array
+  photoDetails?: GalleryPhotoDetail[]; // Per-photo rich details & budget
   date?: string;
   eventName?: string;
   customerName?: string;
@@ -65,6 +72,7 @@ interface ImageGalleryLightboxProps {
   onDelete?: (id: string) => void;
   canDelete?: boolean;
   title?: string;
+  currentCategoryName?: string;
 }
 
 export default function ImageGalleryLightbox({
@@ -74,9 +82,11 @@ export default function ImageGalleryLightbox({
   initialIndex = 0,
   onDelete,
   canDelete = false,
-  title = 'ডেকোরেশন ও ইভেন্ট ফটো শোকেস'
+  title = 'ডেকোরেশন ও ইভেন্ট ফটো শোকেস',
+  currentCategoryName
 }: ImageGalleryLightboxProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [subPhotoIndex, setSubPhotoIndex] = useState(0);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [panPosition, setPanPosition] = useState({ x: 0, y: 0 });
@@ -91,18 +101,15 @@ export default function ImageGalleryLightbox({
   const [showInfo, setShowInfo] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
 
-  // 🎬 Video Export State
+  // 🎬 Video Export & Player Modal State
   const [isExportingVideo, setIsExportingVideo] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoStatus, setVideoStatus] = useState('');
-  const [videoSlideDuration, setVideoSlideDuration] = useState(4); // 4s per slide for video export
-
-  // Sub-photo index for multi-image portfolio item
-  const [subPhotoIndex, setSubPhotoIndex] = useState(0);
+  const [videoSlideDuration, setVideoSlideDuration] = useState(4);
+  const [generatedVideo, setGeneratedVideo] = useState<VideoExportResult | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef<number | null>(null);
@@ -117,11 +124,13 @@ export default function ImageGalleryLightbox({
       resetView();
       setIsPlayingSlideshow(false);
       setShowSettings(false);
+      setGeneratedVideo(null);
     }
   }, [isOpen, initialIndex, items.length]);
 
   useEffect(() => {
     setSubPhotoIndex(0);
+    resetView();
   }, [currentIndex]);
 
   const resetView = () => {
@@ -130,13 +139,15 @@ export default function ImageGalleryLightbox({
     setPanPosition({ x: 0, y: 0 });
   };
 
-  // Keyboard navigation
+  // Keyboard navigation & closing
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (showSettings) {
+        if (generatedVideo) {
+          setGeneratedVideo(null);
+        } else if (showSettings) {
           setShowSettings(false);
         } else if (isFullscreen) {
           exitFullscreen();
@@ -161,24 +172,36 @@ export default function ImageGalleryLightbox({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, currentIndex, items.length, isFullscreen, showSettings]);
+  }, [isOpen, currentIndex, subPhotoIndex, items.length, isFullscreen, showSettings, generatedVideo]);
 
-  // Slideshow timer
+  // Slideshow Timer: Steps through sub-photos then items within the selected category
   useEffect(() => {
-    if (!isPlayingSlideshow || items.length <= 1) return;
+    if (!isPlayingSlideshow || items.length === 0) return;
 
     const interval = setInterval(() => {
-      setCurrentIndex(prev => (prev + 1) % items.length);
-      resetView();
-      if (isAmbientSoundOn) {
-        playCelebrationChime();
+      const curr = items[currentIndex];
+      const photoCount = (curr?.images && curr.images.length > 0) 
+        ? curr.images.length 
+        : (curr?.photoDetails ? curr.photoDetails.length : 1);
+
+      if (subPhotoIndex + 1 < photoCount) {
+        // Next sub-photo within the same item
+        setSubPhotoIndex(prev => prev + 1);
+        resetView();
+        if (isAmbientSoundOn) playCelebrationChime();
+      } else {
+        // Move to next item within current category (loops only within category)
+        setCurrentIndex(prev => (prev + 1) % items.length);
+        setSubPhotoIndex(0);
+        resetView();
+        if (isAmbientSoundOn) playCelebrationChime();
       }
     }, slideshowSpeed);
 
     return () => clearInterval(interval);
-  }, [isPlayingSlideshow, items.length, slideshowSpeed, isAmbientSoundOn]);
+  }, [isPlayingSlideshow, items, currentIndex, subPhotoIndex, slideshowSpeed, isAmbientSoundOn]);
 
-  // Ambient sound synthesizer using Web Audio API
+  // Ambient celebration chime synthesizer
   const playCelebrationChime = () => {
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -192,7 +215,7 @@ export default function ImageGalleryLightbox({
         ctx.resume();
       }
 
-      const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6 (Celebration chord)
+      const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
       notes.forEach((freq, i) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -200,11 +223,11 @@ export default function ImageGalleryLightbox({
         osc.frequency.value = freq;
         gain.gain.setValueAtTime(0.0001, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.04, ctx.currentTime + 0.05 + i * 0.08);
-        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.8 + i * 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.6 + i * 0.1);
         osc.connect(gain);
         gain.connect(ctx.destination);
         osc.start(ctx.currentTime + i * 0.08);
-        osc.stop(ctx.currentTime + 2.0 + i * 0.1);
+        osc.stop(ctx.currentTime + 1.8 + i * 0.1);
       });
     } catch (err) {
       console.log('Audio chime info:', err);
@@ -223,14 +246,43 @@ export default function ImageGalleryLightbox({
 
   const currentItem = items[currentIndex] || items[0];
 
+  // Resolve multiple photos list & current photo's details
+  const itemPhotos = (currentItem.images && currentItem.images.length > 0)
+    ? currentItem.images
+    : (currentItem.photoDetails && currentItem.photoDetails.length > 0 ? currentItem.photoDetails.map(p => p.url) : [currentItem.url]);
+
+  const activePhotoUrl = itemPhotos[subPhotoIndex] || currentItem.url;
+  const currentPhotoDetail: GalleryPhotoDetail | undefined = currentItem.photoDetails && currentItem.photoDetails[subPhotoIndex]
+    ? currentItem.photoDetails[subPhotoIndex]
+    : undefined;
+
+  const activeTitle = currentPhotoDetail?.title || currentItem.title;
+  const activeCost = currentPhotoDetail?.estimatedCost !== undefined ? currentPhotoDetail.estimatedCost : currentItem.estimatedCost;
+  const activeDescription = currentPhotoDetail?.description || currentItem.description;
+  const activeTags = currentPhotoDetail?.highlightTags && currentPhotoDetail.highlightTags.length > 0
+    ? currentPhotoDetail.highlightTags
+    : currentItem.highlightTags;
+
   const handleNext = () => {
-    setCurrentIndex(prev => (prev + 1) % items.length);
+    if (subPhotoIndex + 1 < itemPhotos.length) {
+      setSubPhotoIndex(prev => prev + 1);
+    } else {
+      setCurrentIndex(prev => (prev + 1) % items.length);
+      setSubPhotoIndex(0);
+    }
     resetView();
     if (isAmbientSoundOn) playCelebrationChime();
   };
 
   const handlePrev = () => {
-    setCurrentIndex(prev => (prev - 1 + items.length) % items.length);
+    if (subPhotoIndex > 0) {
+      setSubPhotoIndex(prev => prev - 1);
+    } else {
+      const prevItemIdx = (currentIndex - 1 + items.length) % items.length;
+      setCurrentIndex(prevItemIdx);
+      const prevPhotos = items[prevItemIdx]?.images || [items[prevItemIdx]?.url];
+      setSubPhotoIndex(Math.max(0, prevPhotos.length - 1));
+    }
     resetView();
     if (isAmbientSoundOn) playCelebrationChime();
   };
@@ -326,12 +378,50 @@ export default function ImageGalleryLightbox({
       const diff = touchStartXRef.current - touchEndX;
 
       if (diff > 50) {
-        handleNext(); // swipe left -> next
+        handleNext();
       } else if (diff < -50) {
-        handlePrev(); // swipe right -> prev
+        handlePrev();
       }
     }
     touchStartXRef.current = null;
+  };
+
+  // Single active image direct download
+  const handleDownloadActiveImage = async () => {
+    try {
+      const safeTitle = (activeTitle || 'rittika_photo').replace(/[^a-zA-Z0-9_\u0980-\u09FF-]/g, '_');
+      const fileName = `${safeTitle}.jpg`;
+
+      if (activePhotoUrl.startsWith('data:') || activePhotoUrl.startsWith('blob:')) {
+        const a = document.createElement('a');
+        a.href = activePhotoUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } else {
+        // Fetch to bypass direct navigation download restrictions
+        const resp = await fetch(activePhotoUrl);
+        const blob = await resp.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+      }
+    } catch (err) {
+      // Direct link fallback
+      const a = document.createElement('a');
+      a.href = activePhotoUrl;
+      a.download = `rittika_event_photo_${currentIndex + 1}.jpg`;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
   };
 
   // 🎬 Cinematic Transition Animation Style Calculation
@@ -347,7 +437,6 @@ export default function ImageGalleryLightbox({
 
     if (transitionEffect === 'kenburns') {
       const targetScale = isPlayingSlideshow ? (isEvenSlide ? 1.12 : 1.0) : 1.0;
-      const initialScale = isPlayingSlideshow ? (isEvenSlide ? 1.0 : 1.12) : 1.0;
       return {
         transform: `scale(${targetScale}) rotate(${rotation}deg)`,
         transition: isPlayingSlideshow ? `transform ${slideshowSpeed}ms cubic-bezier(0.25, 1, 0.5, 1)` : 'transform 0.4s ease-out'
@@ -379,7 +468,7 @@ export default function ImageGalleryLightbox({
     setVideoProgress(0);
     setVideoStatus('ছবি ও ট্রানজিশন প্রস্তুত হচ্ছে...');
     try {
-      await exportPresentationToVideo(items, {
+      const result = await exportPresentationToVideo(items, {
         secondsPerSlide: durationSec,
         transitionEffect: transitionEffect,
         companyName: 'রিত্তিকা ইভেন্ট ম্যানেজমেন্ট',
@@ -388,13 +477,12 @@ export default function ImageGalleryLightbox({
           setVideoStatus(statusText);
         }
       });
+      setGeneratedVideo(result);
     } catch (err: any) {
       console.error('Video generation error:', err);
       alert('ভিডিও তৈরিতে সমস্যা হয়েছে: ' + (err.message || 'অনুগ্রহ করে আবার চেষ্টা করুন।'));
     } finally {
-      setTimeout(() => {
-        setIsExportingVideo(false);
-      }, 1500);
+      setIsExportingVideo(false);
     }
   };
 
@@ -411,27 +499,40 @@ export default function ImageGalleryLightbox({
       onTouchEnd={handleTouchEnd}
     >
       {/* 🌟 Top Control Bar */}
-      <div className="bg-black/90 border-b border-white/15 px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2 sm:gap-4 z-30 flex-wrap sm:flex-nowrap">
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 bg-yellow-400 text-black border border-black font-black text-xs rounded shadow-xs">
-            <Sparkles size={16} />
-          </div>
+      <div className="bg-slate-950/95 border-b border-white/15 px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2 sm:gap-4 z-30 flex-wrap sm:flex-nowrap">
+        {/* Left: Back to Category Button + Title */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* 🚪 Prominent Back / Return to Category Button */}
+          <button
+            onClick={onClose}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-400 hover:bg-yellow-300 text-black font-black text-xs uppercase rounded-md shadow-md hover:shadow-yellow-400/50 transition cursor-pointer border border-black active:scale-95 shrink-0"
+            title="ক্যাটাগরি পেজে ফিরে যান (Esc)"
+          >
+            <ArrowLeft size={16} className="stroke-[3]" />
+            <span className="hidden xs:inline">ফিরে যান</span>
+          </button>
+
           <div>
-            <h3 className="text-xs sm:text-sm font-black uppercase text-white tracking-wide flex items-center gap-2 truncate max-w-[150px] sm:max-w-md">
-              {currentItem.title || title}
+            <h3 className="text-xs sm:text-sm font-black uppercase text-white tracking-wide flex items-center gap-2 truncate max-w-[140px] xs:max-w-[200px] sm:max-w-md">
+              {activeTitle}
             </h3>
             <div className="flex items-center gap-2 text-[11px] font-bold text-slate-300">
               <span className="text-yellow-400">
-                ছবি: {toBengaliNumber(currentIndex + 1)} / {toBengaliNumber(items.length)}
+                আইটেম {toBengaliNumber(currentIndex + 1)} / {toBengaliNumber(items.length)}
+                {itemPhotos.length > 1 && (
+                  <span className="text-amber-300 ml-1">
+                    (ছবি {toBengaliNumber(subPhotoIndex + 1)}/{toBengaliNumber(itemPhotos.length)})
+                  </span>
+                )}
               </span>
-              {currentItem.category && (
-                <span className="hidden sm:inline bg-white/10 px-1.5 py-0.2 rounded border border-white/15 text-[10px]">
-                  {currentItem.category}
+              {(currentItem.category || currentCategoryName) && (
+                <span className="hidden sm:inline bg-white/10 px-1.5 py-0.2 rounded border border-white/15 text-[10px] text-yellow-300">
+                  📁 {currentItem.category || currentCategoryName}
                 </span>
               )}
               {zoomLevel > 1 && (
                 <span className="bg-emerald-500/80 text-white px-1.5 py-0.2 rounded text-[10px] flex items-center gap-0.5">
-                  <Move size={10} /> জুম ({Math.round(zoomLevel * 100)}%) - ড্র্যাগ করুন
+                  <Move size={10} /> জুম ({Math.round(zoomLevel * 100)}%)
                 </span>
               )}
             </div>
@@ -439,7 +540,7 @@ export default function ImageGalleryLightbox({
         </div>
 
         {/* 🌟 Center Toolbar: Auto-Play & Duration Selector (3s, 5s, 10s) */}
-        <div className="flex items-center bg-slate-950/80 backdrop-blur-md border border-white/20 p-1.5 rounded-xl gap-1.5 shadow-xl">
+        <div className="flex items-center bg-slate-900/90 backdrop-blur-md border border-white/20 p-1.5 rounded-xl gap-1.5 shadow-xl">
           {/* Auto-Play Main Button */}
           <button
             onClick={() => setIsPlayingSlideshow(prev => !prev)}
@@ -498,28 +599,26 @@ export default function ImageGalleryLightbox({
             {isAmbientSoundOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
           </button>
 
-          {/* Zoom In */}
+          {/* Zoom Controls */}
           <button
             onClick={handleZoomIn}
-            className="p-2 bg-white/10 hover:bg-white/20 rounded text-white border border-white/15 transition cursor-pointer"
+            className="p-2 bg-white/10 hover:bg-white/20 rounded text-white border border-white/15 transition cursor-pointer hidden sm:block"
             title="জুম ইন (+)"
           >
             <ZoomIn size={16} />
           </button>
 
-          {/* Zoom Out */}
           <button
             onClick={handleZoomOut}
-            className="p-2 bg-white/10 hover:bg-white/20 rounded text-white border border-white/15 transition cursor-pointer"
+            className="p-2 bg-white/10 hover:bg-white/20 rounded text-white border border-white/15 transition cursor-pointer hidden sm:block"
             title="জুম আউট (-)"
           >
             <ZoomOut size={16} />
           </button>
 
-          {/* Rotate */}
           <button
             onClick={handleRotate}
-            className="p-2 bg-white/10 hover:bg-white/20 rounded text-white border border-white/15 transition cursor-pointer hidden sm:block"
+            className="p-2 bg-white/10 hover:bg-white/20 rounded text-white border border-white/15 transition cursor-pointer hidden md:block"
             title="ঘোরান (Rotate 90°)"
           >
             <RotateCw size={16} />
@@ -529,8 +628,8 @@ export default function ImageGalleryLightbox({
           {(zoomLevel !== 1 || panPosition.x !== 0 || panPosition.y !== 0) && (
             <button
               onClick={resetView}
-              className="px-2 py-1 bg-yellow-400 text-black text-[10px] font-black rounded border border-black"
-              title="১০০% ভিউ ও প্যান রিসেট"
+              className="px-2 py-1 bg-yellow-400 text-black text-[10px] font-black rounded border border-black cursor-pointer"
+              title="ভিউ রিসেট"
             >
               রিসেট
             </button>
@@ -542,12 +641,12 @@ export default function ImageGalleryLightbox({
             className={`p-2 rounded border transition cursor-pointer ${
               showInfo ? 'bg-yellow-400 text-black border-yellow-400' : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
             }`}
-            title="কাজের বিবরণ ও বাজেট সাজেশন কার্ড অন/অফ"
+            title="কাজের বিবরণ ও বাজেট কার্ড অন/অফ"
           >
             <Info size={16} />
           </button>
 
-          {/* Presentation & Effect Settings */}
+          {/* Presentation Settings */}
           <button
             onClick={() => setShowSettings(prev => !prev)}
             className={`p-2 rounded border transition cursor-pointer ${
@@ -558,7 +657,7 @@ export default function ImageGalleryLightbox({
             <Settings2 size={16} />
           </button>
 
-          {/* 1-Click Presentation Export Dropdown (PDF, HTML, and Video MP4/WebM) */}
+          {/* 1-Click Presentation & Video Export Menu */}
           <div className="relative">
             <button
               onClick={() => setShowExportMenu(prev => !prev)}
@@ -568,27 +667,27 @@ export default function ImageGalleryLightbox({
             >
               <Download size={14} className="stroke-[3]" />
               <span className="hidden md:inline">
-                {isExportingVideo ? 'ভিডিও হচ্ছে...' : (isExportingPdf ? 'PDF হচ্ছে...' : 'প্রেজেন্টেশন এক্সপোর্ট')}
+                {isExportingVideo ? 'ভিডিও তৈরি হচ্ছে...' : (isExportingPdf ? 'PDF হচ্ছে...' : 'ডাউনলোড ও এক্সপোর্ট')}
               </span>
             </button>
 
             {showExportMenu && (
-              <div className="absolute right-0 top-10 w-72 bg-black/95 border-2 border-yellow-400 p-2.5 rounded-lg shadow-2xl z-50 space-y-1.5 text-xs text-white animate-fadeIn backdrop-blur-md">
+              <div className="absolute right-0 top-10 w-72 bg-slate-950 border-2 border-yellow-400 p-2.5 rounded-lg shadow-2xl z-50 space-y-1.5 text-xs text-white animate-fadeIn backdrop-blur-md">
                 <div className="text-[10px] font-black uppercase text-yellow-400 px-2 py-1 border-b border-white/15 flex items-center justify-between">
-                  <span>১-ক্লিকে প্রেজেন্টেশন ডাউনলোড</span>
+                  <span>ডাউনলোড ও এক্সপোর্ট অপশন</span>
                   <span className="text-[9px] bg-yellow-400/20 text-yellow-300 px-1 rounded">HD</span>
                 </div>
                 
-                {/* 🎬 Export as Cinematic Video (MP4 / WebM) */}
+                {/* 🎬 Export as Cinematic Video */}
                 <button
                   onClick={() => handleExportVideo(videoSlideDuration)}
                   className="w-full text-left p-2.5 bg-gradient-to-r from-amber-500/20 to-yellow-500/10 hover:bg-yellow-400 hover:text-black rounded transition font-black flex items-center justify-between border border-yellow-400/40 cursor-pointer"
                 >
                   <div className="flex items-center gap-2">
-                    <Film size={15} className="text-yellow-400 group-hover:text-black" />
+                    <Film size={15} className="text-yellow-400" />
                     <div>
-                      <span className="block text-xs">🎥 সিনেমাটিক ভিডিও (MP4/WebM)</span>
-                      <span className="text-[10px] text-slate-300 font-normal block">Ken Burns জুম ও ট্রানজিশন সহ</span>
+                      <span className="block text-xs">🎥 সিনেমাটিক ভিডিও (.mp4/.webm)</span>
+                      <span className="text-[10px] text-slate-300 font-normal block">HD ট্রানজিশন ও লোয়ার-থার্ড সহ</span>
                     </div>
                   </div>
                   <span className="text-[9px] bg-yellow-400 text-black font-black px-1.5 py-0.5 rounded">ভিডিও</span>
@@ -600,11 +699,11 @@ export default function ImageGalleryLightbox({
                     setShowExportMenu(false);
                     setIsExportingPdf(true);
                     try {
-                      const categories = Array.from(new Set(items.map(i => i.category).filter(Boolean))) as string[];
+                      const categories = currentCategoryName ? [currentCategoryName] : Array.from(new Set(items.map(i => i.category).filter(Boolean))) as string[];
                       await exportPresentationToPDF(items, categories);
                     } catch (e) {
                       console.error(e);
-                      alert('PDF তৈরিতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
+                      alert('PDF তৈরিতে সমস্যা হয়েছে।');
                     } finally {
                       setIsExportingPdf(false);
                     }
@@ -615,38 +714,39 @@ export default function ImageGalleryLightbox({
                     <span>📄</span>
                     <span>প্রেজেন্টেশন ব্রোশিউর (PDF)</span>
                   </div>
-                  <span className="text-[9px] bg-white/20 text-white hover:text-black px-1.5 py-0.5 rounded">ব্রোশিউর</span>
+                  <span className="text-[9px] bg-white/20 text-white px-1.5 py-0.5 rounded">PDF</span>
                 </button>
 
                 {/* Export as Standalone Offline HTML Slide Deck */}
                 <button
                   onClick={() => {
                     setShowExportMenu(false);
-                    const categories = Array.from(new Set(items.map(i => i.category).filter(Boolean))) as string[];
+                    const categories = currentCategoryName ? [currentCategoryName] : Array.from(new Set(items.map(i => i.category).filter(Boolean))) as string[];
                     exportStandaloneHTMLSlideshow(items, categories);
                   }}
                   className="w-full text-left p-2 hover:bg-yellow-400 hover:text-black rounded transition font-bold flex items-center justify-between cursor-pointer"
                 >
                   <div className="flex items-center gap-2">
                     <span>🌐</span>
-                    <span>অফলাইন স্লাইডশো প্যাকেজ (.html)</span>
+                    <span>ইন্টারেক্টিভ অফলাইন স্লাইড (.html)</span>
                   </div>
-                  <span className="text-[9px] bg-white/20 text-white hover:text-black px-1.5 py-0.5 rounded">ইন্টারেক্টিভ</span>
+                  <span className="text-[9px] bg-white/20 text-white px-1.5 py-0.5 rounded">HTML</span>
                 </button>
 
                 {/* Single Image Download */}
-                <a
-                  href={currentItem.url}
-                  download={currentItem.title || `rittika_photo_${currentIndex + 1}.jpg`}
-                  onClick={() => setShowExportMenu(false)}
-                  className="w-full text-left p-2 hover:bg-white/10 rounded transition font-bold flex items-center justify-between cursor-pointer block border-t border-white/10"
+                <button
+                  onClick={() => {
+                    setShowExportMenu(false);
+                    handleDownloadActiveImage();
+                  }}
+                  className="w-full text-left p-2 hover:bg-yellow-400 hover:text-black rounded transition font-bold flex items-center justify-between cursor-pointer border-t border-white/10"
                 >
                   <div className="flex items-center gap-2">
                     <span>🖼️</span>
-                    <span>বর্তমান ছবিটি ডাউনলোড</span>
+                    <span>বর্তমান ছবিটি ডাউনলোড করুন</span>
                   </div>
-                  <span className="text-[9px] text-slate-400">JPG/PNG</span>
-                </a>
+                  <span className="text-[9px] text-slate-400">JPG</span>
+                </button>
               </div>
             )}
           </div>
@@ -660,27 +760,7 @@ export default function ImageGalleryLightbox({
             {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
 
-          {/* Delete Option (if Allowed by Admin) */}
-          {canDelete && onDelete && (
-            <button
-              onClick={() => {
-                if (window.confirm('আপনি কি নিশ্চিতভাবে এই ছবিটি মুছে ফেলতে চান?')) {
-                  onDelete(currentItem.id);
-                  if (items.length <= 1) {
-                    onClose();
-                  } else {
-                    setCurrentIndex(prev => Math.max(0, prev - 1));
-                  }
-                }
-              }}
-              className="p-2 bg-red-600/80 hover:bg-red-600 rounded text-white border border-red-400 transition cursor-pointer"
-              title="মুছে ফেলুন"
-            >
-              <Trash2 size={16} />
-            </button>
-          )}
-
-          {/* Close */}
+          {/* Direct Close Button */}
           <button
             onClick={onClose}
             className="p-2 bg-white/20 hover:bg-red-600 hover:text-white rounded text-white border border-white/30 transition cursor-pointer ml-1"
@@ -695,13 +775,12 @@ export default function ImageGalleryLightbox({
       {isPlayingSlideshow && (
         <div className="w-full bg-white/15 h-1.5 relative overflow-hidden z-20">
           <div 
-            key={`${currentIndex}-${slideshowSpeed}-${isPlayingSlideshow}`}
+            key={`${currentIndex}-${subPhotoIndex}-${slideshowSpeed}-${isPlayingSlideshow}`}
             className="h-full bg-gradient-to-r from-amber-400 via-rose-500 to-purple-500 relative shadow-[0_0_15px_rgba(244,63,94,0.9)]"
             style={{
               animation: `progressBarFill ${slideshowSpeed}ms linear forwards`
             }}
           >
-            {/* Glowing Laser Leading Dot */}
             <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-[0_0_10px_#ffffff]" />
           </div>
         </div>
@@ -710,7 +789,7 @@ export default function ImageGalleryLightbox({
       {/* 🌟 Main Canvas Area */}
       <div className="relative flex-1 flex items-center justify-center p-2 sm:p-6 overflow-hidden">
         {/* Previous Button Arrow */}
-        {items.length > 1 && (
+        {(items.length > 1 || itemPhotos.length > 1) && (
           <button
             onClick={handlePrev}
             className="absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 p-3 sm:p-4 rounded-full bg-black/70 hover:bg-yellow-400 hover:text-black text-white border-2 border-white/30 hover:border-black transition cursor-pointer z-30 shadow-2xl active:scale-95"
@@ -721,84 +800,78 @@ export default function ImageGalleryLightbox({
         )}
 
         {/* Center Display Image / Video */}
-        {(() => {
-          const itemPhotos = currentItem.images && currentItem.images.length > 0 ? currentItem.images : [currentItem.url];
-          const activePhotoUrl = itemPhotos[subPhotoIndex] || currentItem.url;
-          return (
-            <div 
-              className={`relative max-w-6xl max-h-[76vh] flex flex-col items-center justify-center select-none ${
-                zoomLevel > 1 ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'
-              }`}
-              onMouseDown={handleMouseDown}
-              onDoubleClick={() => (zoomLevel > 1 ? resetView() : handleZoomIn())}
-            >
-              {currentItem.isVideo || activePhotoUrl.startsWith('data:video') ? (
-                <video
-                  src={activePhotoUrl}
-                  controls
-                  autoPlay
-                  className="max-h-[72vh] max-w-full rounded shadow-2xl object-contain border-2 border-white/20"
-                />
-              ) : (
-                <img
-                  key={`${currentItem.id || currentIndex}-${subPhotoIndex}`}
-                  src={activePhotoUrl}
-                  alt={currentItem.title}
-                  style={getTransitionStyle()}
-                  className={`max-h-[72vh] max-w-full rounded shadow-[0_20px_50px_rgba(0,0,0,0.8)] object-contain border-2 border-white/20 ${getTransitionClass()}`}
-                  draggable={false}
-                />
-              )}
+        <div 
+          className={`relative max-w-6xl max-h-[76vh] flex flex-col items-center justify-center select-none ${
+            zoomLevel > 1 ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'
+          }`}
+          onMouseDown={handleMouseDown}
+          onDoubleClick={() => (zoomLevel > 1 ? resetView() : handleZoomIn())}
+        >
+          {currentItem.isVideo || activePhotoUrl.startsWith('data:video') ? (
+            <video
+              src={activePhotoUrl}
+              controls
+              autoPlay
+              className="max-h-[72vh] max-w-full rounded shadow-2xl object-contain border-2 border-white/20"
+            />
+          ) : (
+            <img
+              key={`${currentItem.id || currentIndex}-${subPhotoIndex}`}
+              src={activePhotoUrl}
+              alt={activeTitle}
+              style={getTransitionStyle()}
+              className={`max-h-[72vh] max-w-full rounded shadow-[0_20px_50px_rgba(0,0,0,0.8)] object-contain border-2 border-white/20 ${getTransitionClass()}`}
+              draggable={false}
+            />
+          )}
 
-              {/* Sub-Photos Multi-Angle Pill Selector (if project has multiple photos) */}
-              {itemPhotos.length > 1 && (
-                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/85 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/30 flex items-center gap-2 shadow-2xl z-20">
-                  <span className="text-[10px] font-black text-amber-300 uppercase tracking-wider flex items-center gap-1">
-                    <Sparkles size={11} /> এঙ্গেল ({toBengaliNumber(subPhotoIndex + 1)}/{toBengaliNumber(itemPhotos.length)}):
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {itemPhotos.map((pUrl, pIdx) => (
-                      <button
-                        key={pIdx}
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSubPhotoIndex(pIdx);
-                          resetView();
-                        }}
-                        className={`w-6 h-6 rounded-full overflow-hidden border-2 transition cursor-pointer ${
-                          subPhotoIndex === pIdx 
-                            ? 'border-yellow-400 scale-110 ring-2 ring-yellow-400/50' 
-                            : 'border-white/40 opacity-70 hover:opacity-100'
-                        }`}
-                        title={`এঙ্গেল / ছবি ${toBengaliNumber(pIdx + 1)}`}
-                      >
-                        <img src={pUrl} alt={`Angle ${pIdx + 1}`} className="w-full h-full object-cover" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Zoom & Pan Hint Badge on Image */}
-              {zoomLevel > 1 && (
-                <div className="absolute top-3 right-3 bg-black/80 text-yellow-400 text-[10px] font-black px-2.5 py-1 rounded-full border border-yellow-400/50 shadow-md pointer-events-none flex items-center gap-1.5 animate-pulse">
-                  <Move size={12} /> মাউস বা আঙুল দিয়ে ড্র্যাগ করে সব অংশ দেখুন
-                </div>
-              )}
-
-              {/* Active Auto-Play Speed Indicator Tag */}
-              {isPlayingSlideshow && (
-                <div className="absolute top-3 left-3 bg-black/85 text-yellow-400 border border-yellow-400/40 text-[10px] font-black px-2.5 py-1 rounded-full shadow-lg pointer-events-none flex items-center gap-1.5">
-                  <Clock size={11} /> স্লাইডশো গতি: {toBengaliNumber(slideshowSpeed / 1000)} সেকেন্ড
-                </div>
-              )}
+          {/* Sub-Photos Multi-Angle Selector */}
+          {itemPhotos.length > 1 && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/85 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/30 flex items-center gap-2 shadow-2xl z-20">
+              <span className="text-[10px] font-black text-amber-300 uppercase tracking-wider flex items-center gap-1">
+                <Sparkles size={11} /> এঙ্গেল ({toBengaliNumber(subPhotoIndex + 1)}/{toBengaliNumber(itemPhotos.length)}):
+              </span>
+              <div className="flex items-center gap-1.5">
+                {itemPhotos.map((pUrl, pIdx) => (
+                  <button
+                    key={pIdx}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSubPhotoIndex(pIdx);
+                      resetView();
+                    }}
+                    className={`w-7 h-7 rounded-full overflow-hidden border-2 transition cursor-pointer ${
+                      subPhotoIndex === pIdx 
+                        ? 'border-yellow-400 scale-110 ring-2 ring-yellow-400/50' 
+                        : 'border-white/40 opacity-70 hover:opacity-100'
+                    }`}
+                    title={`এঙ্গেল / ছবি ${toBengaliNumber(pIdx + 1)}`}
+                  >
+                    <img src={pUrl} alt={`Angle ${pIdx + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
             </div>
-          );
-        })()}
+          )}
+
+          {/* Zoom Hint Badge */}
+          {zoomLevel > 1 && (
+            <div className="absolute top-3 right-3 bg-black/80 text-yellow-400 text-[10px] font-black px-2.5 py-1 rounded-full border border-yellow-400/50 shadow-md pointer-events-none flex items-center gap-1.5 animate-pulse">
+              <Move size={12} /> মাউস বা আঙুল দিয়ে ড্র্যাগ করে সব অংশ দেখুন
+            </div>
+          )}
+
+          {/* Active Auto-Play Speed Indicator Tag */}
+          {isPlayingSlideshow && (
+            <div className="absolute top-3 left-3 bg-black/85 text-yellow-400 border border-yellow-400/40 text-[10px] font-black px-2.5 py-1 rounded-full shadow-lg pointer-events-none flex items-center gap-1.5">
+              <Clock size={11} /> স্লাইডশো গতি: {toBengaliNumber(slideshowSpeed / 1000)} সেকেন্ড
+            </div>
+          )}
+        </div>
 
         {/* Next Button Arrow */}
-        {items.length > 1 && (
+        {(items.length > 1 || itemPhotos.length > 1) && (
           <button
             onClick={handleNext}
             className="absolute right-3 sm:right-6 top-1/2 -translate-y-1/2 p-3 sm:p-4 rounded-full bg-black/70 hover:bg-yellow-400 hover:text-black text-white border-2 border-white/30 hover:border-black transition cursor-pointer z-30 shadow-2xl active:scale-95"
@@ -808,25 +881,27 @@ export default function ImageGalleryLightbox({
           </button>
         )}
 
-        {/* 🌟 Professional Suggestions & Details Card (প্রফেশনাল ফিল ও ভাইব দেওয়ার জন্য) */}
+        {/* 🌟 Professional Suggestions & Details Card */}
         {showInfo && (
-          <div className="absolute bottom-20 sm:bottom-24 left-3 sm:left-6 max-w-md bg-black/90 border-2 border-yellow-400 p-4 text-xs space-y-2 shadow-2xl backdrop-blur-lg rounded-md z-30 animate-fadeIn text-white max-h-[40vh] overflow-y-auto scrollbar-thin">
+          <div className="absolute bottom-20 sm:bottom-24 left-3 sm:left-6 max-w-md bg-black/90 border-2 border-yellow-400 p-4 text-xs space-y-2 shadow-2xl backdrop-blur-lg rounded-md z-30 animate-fadeIn text-white max-h-[42vh] overflow-y-auto scrollbar-thin">
             <div className="flex items-start justify-between gap-2 border-b border-white/15 pb-2">
               <div>
                 <h4 className="text-sm font-black text-yellow-400 uppercase tracking-wide">
-                  {currentItem.title}
+                  {activeTitle}
                 </h4>
-                {currentItem.category && (
+                {(currentItem.category || currentCategoryName) && (
                   <span className="text-[10px] font-black uppercase text-black bg-yellow-400 px-2 py-0.5 rounded mt-1 inline-block">
-                    {currentItem.category}
+                    {currentItem.category || currentCategoryName}
                   </span>
                 )}
               </div>
-              {currentItem.estimatedCost && (
-                <div className="text-right">
-                  <span className="text-[9px] text-slate-300 block">আনুমানিক বাজেট রেঞ্জ</span>
+              {activeCost !== undefined && (
+                <div className="text-right shrink-0">
+                  <span className="text-[9px] text-slate-300 block">
+                    {itemPhotos.length > 1 ? 'এই অংশের বাজেট' : 'আনুমানিক বাজেট রেঞ্জ'}
+                  </span>
                   <span className="text-xs font-black text-emerald-400">
-                    {formatCurrency(currentItem.estimatedCost)}
+                    {formatCurrency(activeCost)}
                   </span>
                 </div>
               )}
@@ -855,20 +930,20 @@ export default function ImageGalleryLightbox({
             </div>
 
             {/* Description / Work details */}
-            {currentItem.description && (
+            {activeDescription && (
               <p className="text-[11px] text-slate-200 border-t border-white/10 pt-2 leading-relaxed">
-                {currentItem.description}
+                {activeDescription}
               </p>
             )}
 
             {/* Professional Suggestion & Highlight Tags */}
-            {currentItem.highlightTags && currentItem.highlightTags.length > 0 && (
+            {activeTags && activeTags.length > 0 && (
               <div className="pt-2 border-t border-white/10">
                 <span className="text-[9px] text-yellow-400 block font-black uppercase tracking-wider mb-1 flex items-center gap-1">
                   <Sparkles size={10} /> বিশেষ বৈশিষ্ট্য ও ডেকোরেশন হাইলাইটস:
                 </span>
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {currentItem.highlightTags.map((tag, idx) => (
+                  {activeTags.map((tag, idx) => (
                     <span key={idx} className="bg-white/15 text-white text-[10px] font-bold px-2 py-0.5 rounded border border-white/15 flex items-center gap-1">
                       <Tag size={9} className="text-yellow-400" />
                       {tag}
@@ -896,6 +971,16 @@ export default function ImageGalleryLightbox({
                 </div>
               </div>
             )}
+
+            {/* Quick Download Image Link */}
+            <div className="pt-2 border-t border-white/15 flex items-center justify-between">
+              <button
+                onClick={handleDownloadActiveImage}
+                className="text-[11px] text-yellow-400 hover:text-yellow-300 font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <Download size={12} /> এই ছবিটি ডাউনলোড করুন
+              </button>
+            </div>
           </div>
         )}
 
@@ -920,11 +1005,11 @@ export default function ImageGalleryLightbox({
               <label className="block mb-1.5 text-slate-300 font-bold">সিনেমাটিক ট্রানজিশন অ্যানিমেশন:</label>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { id: 'kenburns', name: '🎥 Ken Burns (ধীর জুম-ইন/আউট)' },
-                  { id: 'cinema', name: '✨ Cinema Dissolve (ব্লার-ফেড)' },
-                  { id: 'fade', name: '🌫️ Soft Fade (সফট ফেড)' },
+                  { id: 'kenburns', name: '🎥 Ken Burns (ধীর জুম)' },
+                  { id: 'cinema', name: '✨ Cinema Dissolve (ব্লার)' },
+                  { id: 'fade', name: '🌫️ Soft Fade (ফেড)' },
                   { id: 'slide', name: '⏩ Smooth Slide (স্লাইড)' },
-                  { id: 'zoom', name: '🔍 Zoom Burst (জুম ইফেক্ট)' }
+                  { id: 'zoom', name: '🔍 Zoom Burst (জুম)' }
                 ].map(t => (
                   <button
                     key={t.id}
@@ -941,7 +1026,7 @@ export default function ImageGalleryLightbox({
               </div>
             </div>
 
-            {/* Speed Options (3s, 5s, 10s, etc.) */}
+            {/* Speed Options */}
             <div>
               <label className="block mb-1.5 text-slate-300 font-bold">প্রতি স্লাইডের সময় (Duration):</label>
               <div className="grid grid-cols-4 gap-1.5 text-center">
@@ -1025,27 +1110,87 @@ export default function ImageGalleryLightbox({
               </div>
               <div className="flex justify-between text-[11px] font-bold text-slate-400">
                 <span>রেন্ডারিং প্রগ্রেস</span>
-                <span className="text-yellow-400 font-black">{videoProgress}%</span>
+                <span className="text-yellow-400 font-black">{toBengaliNumber(videoProgress)}%</span>
               </div>
             </div>
 
             <div className="text-[11px] text-slate-400 bg-black/40 p-2.5 rounded border border-white/10">
-              💡 ভিডিও ফাইলটি সম্পন্ন হলে স্বয়ংক্রিয়ভাবে ডাউনলোড হয়ে যাবে। এটি ক্লায়েন্টকে হোয়াটসঅ্যাপ বা সোশ্যাল মিডিয়ায় পাঠানো যাবে।
+              💡 ভিডিও ফাইলটি সম্পন্ন হলে স্বয়ংক্রিয়ভাবে ডাউনলোড হবে এবং স্ক্রিনে সরাসরি প্লে করে দেখতে পারবেন।
             </div>
           </div>
         </div>
       )}
 
-      {/* 🌟 Bottom Thumbnail Carousel Strip */}
-      <div className="bg-black/95 border-t border-white/15 p-2 sm:p-3 flex items-center gap-2 overflow-x-auto z-30 scrollbar-thin">
+      {/* 🌟 🎬 Generated Video Player & Download Confirmation Modal */}
+      {generatedVideo && (
+        <div className="fixed inset-0 bg-black/95 z-[210] flex items-center justify-center p-4 backdrop-blur-2xl animate-fadeIn">
+          <div className="max-w-2xl w-full bg-slate-900 border-2 border-yellow-400 rounded-2xl p-5 shadow-2xl text-white space-y-4">
+            <div className="flex items-center justify-between border-b border-white/15 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-500/20 text-emerald-400 border border-emerald-400 rounded-lg">
+                  <CheckCircle2 size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-yellow-400 uppercase">
+                    সিনেমাটিক ভিডিও সফলভাবে তৈরি হয়েছে!
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    ফাইল: {generatedVideo.fileName}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setGeneratedVideo(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* In-app Video Player */}
+            <div className="w-full bg-black rounded-xl overflow-hidden border border-white/20 aspect-video flex items-center justify-center">
+              <video
+                src={generatedVideo.url}
+                controls
+                autoPlay
+                className="w-full h-full object-contain"
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <button
+                onClick={() => setGeneratedVideo(null)}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-lg transition cursor-pointer border border-white/20"
+              >
+                বন্ধ করুন
+              </button>
+              <a
+                href={generatedVideo.url}
+                download={generatedVideo.fileName}
+                className="px-5 py-2.5 bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-500 hover:to-yellow-600 text-black font-black text-sm uppercase rounded-lg shadow-lg hover:shadow-yellow-400/50 transition cursor-pointer flex items-center gap-2 border border-black"
+              >
+                <Download size={18} className="stroke-[3]" />
+                ভিডিও ডাউনলোড করুন (.mp4 / .webm)
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🌟 Bottom Thumbnail Strip */}
+      <div className="bg-slate-950/95 border-t border-white/15 p-2 sm:p-3 flex items-center gap-2 overflow-x-auto z-30 scrollbar-thin">
         <div className="flex items-center gap-2 mx-auto">
           {items.map((item, index) => {
             const isActive = index === currentIndex;
+            const thumbPhotos = (item.images && item.images.length > 0) ? item.images : [item.url];
+            const thumbUrl = thumbPhotos[0] || item.url;
             return (
               <button
                 key={item.id || index}
                 onClick={() => {
                   setCurrentIndex(index);
+                  setSubPhotoIndex(0);
                   resetView();
                   if (isAmbientSoundOn) playCelebrationChime();
                 }}
@@ -1055,16 +1200,21 @@ export default function ImageGalleryLightbox({
                     : 'border-white/20 opacity-60 hover:opacity-100'
                 }`}
               >
-                {item.isVideo || item.url.startsWith('data:video') ? (
+                {item.isVideo || thumbUrl.startsWith('data:video') ? (
                   <div className="w-full h-full bg-slate-800 flex items-center justify-center text-[10px] font-black text-yellow-400">
                     ▶ Video
                   </div>
                 ) : (
                   <img
-                    src={item.url}
+                    src={thumbUrl}
                     alt={item.title}
                     className="w-full h-full object-cover"
                   />
+                )}
+                {thumbPhotos.length > 1 && (
+                  <div className="absolute top-0.5 right-0.5 bg-black/80 text-amber-300 text-[8px] font-black px-1 rounded">
+                    +{toBengaliNumber(thumbPhotos.length)}
+                  </div>
                 )}
                 {isActive && (
                   <div className="absolute inset-x-0 bottom-0 bg-yellow-400 text-black text-[9px] font-black text-center py-0.2">

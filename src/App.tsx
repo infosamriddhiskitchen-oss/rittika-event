@@ -53,6 +53,7 @@ import {
   Vehicle,
   TripLog,
   OnlineBooking,
+  BookingRequestStatus,
   Attachment,
   PurchaseInvoice,
   SalesInvoice,
@@ -106,6 +107,7 @@ import UserManager from './components/UserManager';
 import ShareModal from './components/ShareModal';
 import CategoryDropdownMenu from './components/CategoryDropdownMenu';
 import SmartFloatingSocialBar from './components/SmartFloatingSocialBar';
+import SmartWhatsAppInquiryModal from './components/SmartWhatsAppInquiryModal';
 
 const DEFAULT_APPROVED_USERS: UserProfile[] = [
   {
@@ -175,6 +177,8 @@ export default function App() {
   const [approvedUsers, setApprovedUsers] = useState<UserProfile[]>(DEFAULT_APPROVED_USERS);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+  const [whatsAppModalInitialData, setWhatsAppModalInitialData] = useState<Partial<OnlineBooking> | undefined>(undefined);
 
   // 🗑️ Reliable Global Delete Modal State
   const [pendingDelete, setPendingDelete] = useState<{
@@ -856,9 +860,26 @@ export default function App() {
   };
 
   const handleDeclineBooking = (bookingId: string) => {
-    const updatedBookings = onlineBookings.map(b => b.id === bookingId ? { ...b, status: 'Declined' as const } : b);
+    const updatedBookings = onlineBookings.map(b => b.id === bookingId ? { ...b, status: 'Cancelled' as const } : b);
     saveState('erp_online_bookings', updatedBookings, setOnlineBookings);
     showToast('বুকিং আবেদনটি বাতিল করা হয়েছে।');
+  };
+
+  const handleUpdateBookingStatus = (bookingId: string, newStatus: BookingRequestStatus, adminNotes?: string) => {
+    const updatedBookings = onlineBookings.map(b => 
+      b.id === bookingId ? { ...b, status: newStatus, ...(adminNotes !== undefined ? { adminNotes } : {}) } : b
+    );
+    saveState('erp_online_bookings', updatedBookings, setOnlineBookings);
+    showToast(`বুকিং স্ট্যাটাস সফলভাবে আপডেট করা হয়েছে (${newStatus})`);
+  };
+
+  const handleDeleteBooking = (bookingId: string) => {
+    const target = onlineBookings.find(b => b.id === bookingId);
+    requestDelete('বুকিং রিকোয়েস্ট মুছুন', target ? `${target.customerName} (${target.eventType})` : undefined, () => {
+      const updatedList = onlineBookings.filter(b => b.id !== bookingId);
+      saveState('erp_online_bookings', updatedList, setOnlineBookings);
+      showToast('বুকিং আবেদনটি মুছে ফেলা হয়েছে।');
+    });
   };
 
   const handleAddAttachment = (att: Omit<Attachment, 'id'>) => {
@@ -921,6 +942,11 @@ export default function App() {
     saveState('erp_purchase_invoices', [...purchaseInvoices, newItem], setPurchaseInvoices);
     showToast('ক্রয় চালান সফলভাবে সংরক্ষিত!');
   };
+  const handleUpdatePurchaseInvoice = (id: string, updated: Omit<PurchaseInvoice, 'id'>) => {
+    const updatedList = purchaseInvoices.map(p => p.id === id ? { ...updated, id } : p);
+    saveState('erp_purchase_invoices', updatedList, setPurchaseInvoices);
+    showToast('ক্রয় চালান সফলভাবে আপডেট হয়েছে!');
+  };
   const handleDeletePurchaseInvoice = (id: string) => {
     const pi = purchaseInvoices.find(x => x.id === id);
     requestDelete('ক্রয় চালান মুছুন', pi ? `চালান নং: ${pi.invoiceNo}` : undefined, () => {
@@ -932,6 +958,11 @@ export default function App() {
     const newItem = { ...inv, id: `si-${Date.now()}` };
     saveState('erp_sales_invoices', [...salesInvoices, newItem], setSalesInvoices);
     showToast('বিক্রয় ইনভয়েস সফলভাবে তৈরি হয়েছে!');
+  };
+  const handleUpdateSalesInvoice = (id: string, updated: Omit<SalesInvoice, 'id'>) => {
+    const updatedList = salesInvoices.map(s => s.id === id ? { ...updated, id } : s);
+    saveState('erp_sales_invoices', updatedList, setSalesInvoices);
+    showToast('বিক্রয় ইনভয়েস সফলভাবে আপডেট হয়েছে!');
   };
   const handleDeleteSalesInvoice = (id: string) => {
     const si = salesInvoices.find(x => x.id === id);
@@ -945,6 +976,11 @@ export default function App() {
     saveState('erp_rental_invoices', [...rentalInvoices, newItem], setRentalInvoices);
     showToast('ভাড়া ইনভয়েস তৈরি হয়েছে!');
   };
+  const handleUpdateRentalInvoice = (id: string, updated: Omit<RentalInvoice, 'id'>) => {
+    const updatedList = rentalInvoices.map(r => r.id === id ? { ...updated, id } : r);
+    saveState('erp_rental_invoices', updatedList, setRentalInvoices);
+    showToast('ভাড়া ইনভয়েস সফলভাবে আপডেট হয়েছে!');
+  };
   const handleDeleteRentalInvoice = (id: string) => {
     const ri = rentalInvoices.find(x => x.id === id);
     requestDelete('ভাড়া ইনভয়েস মুছুন', ri ? `ইনভয়েস নং: ${ri.invoiceNo}` : undefined, () => {
@@ -956,6 +992,11 @@ export default function App() {
     const newItem = { ...inv, id: `ei-${Date.now()}` };
     saveState('erp_event_invoices', [...eventInvoices, newItem], setEventInvoices);
     showToast('ইভেন্ট ইনভয়েস তৈরি হয়েছে!');
+  };
+  const handleUpdateEventInvoice = (id: string, updated: Omit<EventInvoice, 'id'>) => {
+    const updatedList = eventInvoices.map(e => e.id === id ? { ...updated, id } : e);
+    saveState('erp_event_invoices', updatedList, setEventInvoices);
+    showToast('ইভেন্ট ইনভয়েস সফলভাবে আপডেট হয়েছে!');
   };
   const handleDeleteEventInvoice = (id: string) => {
     const ei = eventInvoices.find(x => x.id === id);
@@ -1208,9 +1249,9 @@ export default function App() {
     const handleScroll = (currentY: number) => {
       if (!ticking) {
         window.requestAnimationFrame(() => {
-          if (currentY > 80 && currentY > lastY) {
+          if (currentY > 60) {
             setIsScrolledDown(true);
-          } else if (currentY < lastY - 10 || currentY < 40) {
+          } else if (currentY <= 30) {
             setIsScrolledDown(false);
           }
           lastY = currentY;
@@ -1272,160 +1313,206 @@ export default function App() {
         </div>
       )}
 
-      {/* 🌟 Top Header & Auth Navigation with Smart Scroll Mini-Dock & Immersive View */}
-      <header 
-        className={`bg-gradient-to-r from-slate-950 via-purple-950 to-slate-900 border-b border-amber-400/20 sticky top-0 z-40 no-print shadow-lg shadow-purple-950/20 text-white backdrop-blur-md transition-all duration-300 ease-out ${
+      {/* 🌟 Top Header & Auth Navigation with Smart Smooth Scroll Floating Bar & Full View at Top */}
+      <div 
+        className={`sticky top-0 z-40 no-print transition-all duration-500 ease-in-out ${
           isImmersiveFullView 
             ? '-translate-y-full opacity-0 pointer-events-none' 
             : isScrolledDown 
-              ? 'py-1.5 px-3 sm:px-5 flex flex-row items-center justify-between gap-2 shadow-2xl bg-slate-950/95 border-amber-400/30' 
-              : 'px-4 sm:px-6 py-3 sm:py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3'
-        }`} 
-        id="header-bar"
+              ? 'px-2 sm:px-4 pt-2 pb-1' 
+              : 'px-0 pt-0 pb-0'
+        }`}
       >
-        {/* Brand / Logo Area (Expands or Contracts based on scroll) */}
-        <div className="flex items-center gap-2.5 sm:gap-3">
-          <div className={`rounded-xl bg-gradient-to-br from-amber-400 via-rose-500 to-purple-600 p-0.5 shadow-md flex items-center justify-center text-white transition-all ${
-            isScrolledDown ? 'w-8 h-8' : 'w-10 h-10'
-          }`}>
-            <div className="w-full h-full bg-slate-950/40 rounded-[10px] flex items-center justify-center">
-              <Sparkles size={isScrolledDown ? 15 : 20} className="text-amber-300 animate-pulse" />
-            </div>
-          </div>
-          <div>
-            <h1 className={`font-black tracking-tight uppercase text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-rose-200 to-purple-200 leading-none transition-all ${
-              isScrolledDown ? 'text-sm sm:text-base' : 'text-lg sm:text-xl'
-            }`}>
-              রিত্তিকা ইভেন্ট ম্যানেজমেন্ট
-            </h1>
-            {!isScrolledDown && (
-              <p className="text-[10px] text-amber-200/80 font-bold tracking-widest uppercase mt-0.5 flex items-center gap-1.5">
-                <span>Rittika Event Management</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-ping"></span>
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Action Controls & Fast Navigation */}
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
-          
-          {/* 🌟 Category Dropdown Mega Menu for Fast Navigation */}
-          <CategoryDropdownMenu
-            activeTab={activeTab}
-            onSelectTab={(tabId) => setActiveTab(tabId)}
-            currentUser={currentUser}
-            canAccessTab={canAccessTab}
-          />
-
-          {/* 🌟 Clean Full Screen / Immersive View Toggle */}
+        <header 
+          className={`text-white backdrop-blur-xl transition-all duration-500 ease-in-out ${
+            isScrolledDown 
+              ? 'py-2 px-3 sm:px-5 flex flex-row items-center justify-between gap-2 shadow-[0_12px_32px_rgba(0,0,0,0.6)] bg-slate-950/92 border border-amber-400/35 rounded-2xl max-w-7xl mx-auto' 
+              : 'px-4 sm:px-8 py-3.5 sm:py-4 flex flex-col sm:flex-row items-center justify-between gap-3 bg-gradient-to-r from-slate-950 via-purple-950 to-slate-900 border-b border-amber-400/20 shadow-xl w-full rounded-none'
+          }`} 
+          id="header-bar"
+        >
+          {/* Brand / Logo Area (Clickable: Returns to Home / Public Portal from anywhere) */}
           <button
             type="button"
-            onClick={() => setIsImmersiveFullView(true)}
-            title="ক্লিন ফুল ভিউ (হেডার ও মেনু সাময়িক হাইড করুন)"
-            className="p-1.5 sm:px-2.5 sm:py-1.5 text-xs rounded-xl font-bold flex items-center gap-1 bg-white/10 hover:bg-white/20 text-amber-200 border border-white/20 transition cursor-pointer active:scale-95"
+            onClick={() => {
+              setActiveTab('portal');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className="flex items-center gap-2.5 sm:gap-3 text-left group cursor-pointer focus:outline-none transition active:scale-[0.98]"
+            title="হোমপেজে ফিরে যান (Go to Home / Portal)"
+            id="header-brand-home-btn"
           >
-            <Maximize2 size={14} className="stroke-[2.5]" />
-            <span className="hidden lg:inline text-[11px]">ফুল ভিউ</span>
-          </button>
-
-          {/* 🌟 1-Click Share Website & Portal Button */}
-          <button
-            onClick={() => setIsShareModalOpen(true)}
-            title="ওয়েবসাইট লিংক, কিউআর কোড বা হোয়াটসঅ্যাপে যে কাউকে পাঠান"
-            className="px-2.5 sm:px-3.5 py-1.5 text-xs rounded-xl font-black uppercase flex items-center gap-1 bg-gradient-to-r from-amber-400 via-rose-500 to-purple-600 text-white shadow-md hover:shadow-lg transition cursor-pointer active:scale-95 border border-white/20"
-          >
-            <Share2 size={13} className="stroke-[2.5]" />
-            <span className={isScrolledDown ? 'hidden md:inline text-[11px]' : 'text-[11px]'}>শেয়ার</span>
-          </button>
-
-          {/* User Profile / Status Badge */}
-          {currentUser ? (
-            <div className="flex items-center gap-1.5 sm:gap-2 border border-white/15 bg-white/10 backdrop-blur-md rounded-xl p-1 px-2 text-xs shadow-inner">
-              <div className="flex items-center gap-1">
-                <span className={`text-[9px] sm:text-[10px] font-black px-1.5 sm:px-2 py-0.5 rounded-full shadow-xs ${
-                  currentUser.role === 'Admin' ? 'bg-gradient-to-r from-rose-500 to-pink-600 text-white' :
-                  currentUser.role === 'Manager' ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white' :
-                  currentUser.role === 'Staff' ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white' :
-                  'bg-slate-700 text-slate-200'
-                }`}>
-                  {currentUser.role === 'Admin' ? '👑 অ্যাডমিন' :
-                   currentUser.role === 'Manager' ? '👔 ম্যানেজার' :
-                   currentUser.role === 'Staff' ? '🛠️ স্টাফ' : '👁️ ভিউয়ার'}
-                </span>
-                <span className="font-bold text-amber-100 hidden sm:inline max-w-[100px] md:max-w-[130px] truncate text-[11px]" title={currentUser.email}>
-                  {currentUser.name}
-                </span>
+            <div className={`rounded-xl bg-gradient-to-br from-amber-400 via-amber-500 to-yellow-600 p-0.5 shadow-md flex items-center justify-center text-white transition-all duration-500 overflow-hidden shrink-0 group-hover:ring-2 group-hover:ring-amber-300 ${
+              isScrolledDown ? 'h-9 w-auto px-1.5' : 'h-11 sm:h-12 w-auto px-2'
+            }`}>
+              <div className="h-full w-auto bg-black rounded-[9px] flex items-center justify-center overflow-hidden p-1 relative">
+                <img 
+                  src="/logo.png" 
+                  alt="Rittika Event Management Logo" 
+                  className="h-full w-auto max-h-full object-contain filter drop-shadow-md group-hover:scale-105 transition-transform" 
+                  onError={(e) => {
+                    (e.currentTarget as HTMLElement).style.display = 'none';
+                    if (e.currentTarget.parentElement) {
+                      e.currentTarget.parentElement.innerHTML = '<span class="text-amber-300 font-black text-xs px-1">REM</span>';
+                    }
+                  }}
+                />
               </div>
-
-              <button
-                onClick={handleLogout}
-                title="লগআউট করুন"
-                className="p-1 hover:bg-rose-500/20 text-rose-300 rounded-lg transition cursor-pointer"
-              >
-                <LogOut size={13} className="stroke-[2.5]" />
-              </button>
             </div>
-          ) : (
-            <button
-              onClick={() => setIsAuthModalOpen(true)}
-              className="neo-btn neo-btn-primary px-2.5 sm:px-3.5 py-1.5 text-xs font-black uppercase flex items-center gap-1 shadow-md cursor-pointer"
-            >
-              <LogIn size={13} className="stroke-[2.5]" />
-              <span className="text-[11px]">লগইন</span>
-            </button>
-          )}
+            <div>
+              <h1 className={`font-black tracking-tight uppercase text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-rose-200 to-purple-200 leading-none transition-all duration-500 group-hover:from-amber-200 group-hover:to-yellow-300 ${
+                isScrolledDown ? 'text-xs sm:text-sm md:text-base' : 'text-lg sm:text-xl'
+              }`}>
+                রিত্তিকা ইভেন্ট ম্যানেজমেন্ট
+              </h1>
+              {!isScrolledDown && (
+                <p className="text-[10px] text-amber-200/80 font-bold tracking-widest uppercase mt-0.5 flex items-center gap-1.5 transition-opacity duration-300">
+                  <span>Rittika Event Management</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-ping"></span>
+                </p>
+              )}
+            </div>
+          </button>
 
-          {/* User Access Manager Quick Button for Super Admin */}
-          {isSuperAdmin && !isScrolledDown && (
-            <button
-              onClick={() => setActiveTab('users')}
-              title="ইউজার অনুমোদন ও রোল ম্যানেজমেন্ট"
-              className={`px-3 py-1.5 text-xs rounded-xl font-bold flex items-center gap-1 transition cursor-pointer border ${
-                activeTab === 'users' 
-                  ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 border-amber-300 shadow-md' 
-                  : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
-              }`}
+          {/* Action Controls & Fast Navigation & Instant Contact */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
+            
+            {/* 📞 Instant Fast Contact Shortcuts (Always accessible, compact on scroll) */}
+            <a 
+              href="tel:+8801721779396"
+              className="px-2.5 py-1.5 text-xs rounded-xl font-black flex items-center gap-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md transition active:scale-95 border border-emerald-400/30"
+              title="যেকোনো সময় সরাসরি কল করুন (+880 1721-779396)"
             >
-              <ShieldCheck size={14} className="stroke-[2.5]" />
-              <span className="hidden md:inline text-[11px]">রোল কন্ট্রোল</span>
-            </button>
-          )}
+              <Phone size={13} className="fill-white" />
+              <span className={isScrolledDown ? 'hidden md:inline text-[11px]' : 'text-[11px]'}>কল করুন</span>
+            </a>
 
-          {/* Export / Import (Only for Manager / Admin when not mini) */}
-          {isApprovedStaffOrAdmin && !isScrolledDown && (
-            <>
-              <button 
-                id="export-data-btn"
-                onClick={handleExportData}
-                title="ডাটা এক্সপোর্ট / ব্যাকআপ ফাইল ডাউনলোড করুন"
-                className="px-2.5 py-1.5 text-xs rounded-xl font-bold flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white border border-white/20 transition cursor-pointer"
+            <button 
+              type="button"
+              onClick={() => setIsWhatsAppModalOpen(true)}
+              className="px-2.5 py-1.5 text-xs rounded-xl font-black flex items-center gap-1 bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 shadow-md transition active:scale-95 border border-emerald-300/40 cursor-pointer"
+              title="হোয়াটসঅ্যাপে তাৎক্ষণিক বার্তা বা স্মার্ট বুকিং ইনকোয়ারি পাঠান (+880 1721-779396)"
+            >
+              <MessageCircle size={13} className="stroke-[2.5]" />
+              <span className="hidden lg:inline text-[11px]">হোয়াটসঅ্যাপ</span>
+            </button>
+
+            {/* 🌟 Category Dropdown Mega Menu for Fast Navigation */}
+            <CategoryDropdownMenu
+              activeTab={activeTab}
+              onSelectTab={(tabId) => setActiveTab(tabId)}
+              currentUser={currentUser}
+              canAccessTab={canAccessTab}
+            />
+
+            {/* 🌟 Clean Full Screen / Immersive View Toggle */}
+            <button
+              type="button"
+              onClick={() => setIsImmersiveFullView(true)}
+              title="ক্লিন ফুল ভিউ (হেডার ও মেনু সাময়িক হাইড করুন)"
+              className="p-1.5 sm:px-2.5 sm:py-1.5 text-xs rounded-xl font-bold flex items-center gap-1 bg-white/10 hover:bg-white/20 text-amber-200 border border-white/20 transition cursor-pointer active:scale-95"
+            >
+              <Maximize2 size={14} className="stroke-[2.5]" />
+              <span className="hidden lg:inline text-[11px]">ফুল ভিউ</span>
+            </button>
+
+            {/* 🌟 1-Click Share Website & Portal Button */}
+            <button
+              onClick={() => setIsShareModalOpen(true)}
+              title="ওয়েবসাইট লিংক, কিউআর কোড বা হোয়াটসঅ্যাপে যে কাউকে পাঠান"
+              className="px-2.5 sm:px-3.5 py-1.5 text-xs rounded-xl font-black uppercase flex items-center gap-1 bg-gradient-to-r from-amber-400 via-rose-500 to-purple-600 text-white shadow-md hover:shadow-lg transition cursor-pointer active:scale-95 border border-white/20"
+            >
+              <Share2 size={13} className="stroke-[2.5]" />
+              <span className={isScrolledDown ? 'hidden md:inline text-[11px]' : 'text-[11px]'}>শেয়ার</span>
+            </button>
+
+            {/* User Profile / Status Badge */}
+            {currentUser ? (
+              <div className="flex items-center gap-1.5 sm:gap-2 border border-white/15 bg-white/10 backdrop-blur-md rounded-xl p-1 px-2 text-xs shadow-inner">
+                <div className="flex items-center gap-1">
+                  <span className={`text-[9px] sm:text-[10px] font-black px-1.5 sm:px-2 py-0.5 rounded-full shadow-xs ${
+                    currentUser.role === 'Admin' ? 'bg-gradient-to-r from-rose-500 to-pink-600 text-white' :
+                    currentUser.role === 'Manager' ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white' :
+                    currentUser.role === 'Staff' ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white' :
+                    'bg-slate-700 text-slate-200'
+                  }`}>
+                    {currentUser.role === 'Admin' ? '👑 অ্যাডমিন' :
+                     currentUser.role === 'Manager' ? '👔 ম্যানেজার' :
+                     currentUser.role === 'Staff' ? '🛠️ স্টাফ' : '👁️ ভিউয়ার'}
+                  </span>
+                  <span className="font-bold text-amber-100 hidden sm:inline max-w-[100px] md:max-w-[130px] truncate text-[11px]" title={currentUser.email}>
+                    {currentUser.name}
+                  </span>
+                </div>
+
+                <button
+                  onClick={handleLogout}
+                  title="লগআউট করুন"
+                  className="p-1 hover:bg-rose-500/20 text-rose-300 rounded-lg transition cursor-pointer"
+                >
+                  <LogOut size={13} className="stroke-[2.5]" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="neo-btn neo-btn-primary px-2.5 sm:px-3.5 py-1.5 text-xs font-black uppercase flex items-center gap-1 shadow-md cursor-pointer"
               >
-                <Download size={13} className="stroke-[2.5]" />
-                <span className="hidden lg:inline text-[11px]">ব্যাকআপ</span>
+                <LogIn size={13} className="stroke-[2.5]" />
+                <span className="text-[11px]">লগইন</span>
               </button>
+            )}
 
-              {isSuperAdmin && (
-                <label 
-                  title="আগের ব্যাকআপ ফাইল রিস্টোর করুন"
+            {/* User Access Manager Quick Button for Super Admin */}
+            {isSuperAdmin && !isScrolledDown && (
+              <button
+                onClick={() => setActiveTab('users')}
+                title="ইউজার অনুমোদন ও রোল ম্যানেজমেন্ট"
+                className={`px-3 py-1.5 text-xs rounded-xl font-bold flex items-center gap-1 transition cursor-pointer border ${
+                  activeTab === 'users' 
+                    ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 border-amber-300 shadow-md' 
+                    : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
+                }`}
+              >
+                <ShieldCheck size={14} className="stroke-[2.5]" />
+                <span className="hidden md:inline text-[11px]">রোল কন্ট্রোল</span>
+              </button>
+            )}
+
+            {/* Export / Import (Only for Manager / Admin when not mini) */}
+            {isApprovedStaffOrAdmin && !isScrolledDown && (
+              <>
+                <button 
+                  id="export-data-btn"
+                  onClick={handleExportData}
+                  title="ডাটা এক্সপোর্ট / ব্যাকআপ ফাইল ডাউনলোড করুন"
                   className="px-2.5 py-1.5 text-xs rounded-xl font-bold flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white border border-white/20 transition cursor-pointer"
                 >
-                  <Upload size={13} className="stroke-[2.5]" />
-                  <span className="hidden lg:inline text-[11px]">রিস্টোর</span>
-                  <input 
-                    id="import-data-file"
-                    type="file" 
-                    accept=".json" 
-                    onChange={handleImportData} 
-                    className="hidden" 
-                  />
-                </label>
-              )}
-            </>
-          )}
+                  <Download size={13} className="stroke-[2.5]" />
+                  <span className="hidden lg:inline text-[11px]">ব্যাকআপ</span>
+                </button>
 
-        </div>
-      </header>
+                {isSuperAdmin && (
+                  <label 
+                    title="আগের ব্যাকআপ ফাইল রিস্টোর করুন"
+                    className="px-2.5 py-1.5 text-xs rounded-xl font-bold flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white border border-white/20 transition cursor-pointer"
+                  >
+                    <Upload size={13} className="stroke-[2.5]" />
+                    <span className="hidden lg:inline text-[11px]">রিস্টোর</span>
+                    <input 
+                      id="import-data-file"
+                      type="file" 
+                      accept=".json" 
+                      onChange={handleImportData} 
+                      className="hidden" 
+                    />
+                  </label>
+                )}
+              </>
+            )}
+          </div>
+        </header>
+      </div>
 
       {/* 🌟 Floating Exit Pill When Immersive Full View Is Enabled */}
       {isImmersiveFullView && (
@@ -1641,6 +1728,8 @@ export default function App() {
               onAddOnlineBooking={handleAddOnlineBooking}
               onApproveBooking={handleApproveBooking}
               onDeclineBooking={handleDeclineBooking}
+              onUpdateBookingStatus={handleUpdateBookingStatus}
+              onDeleteBooking={handleDeleteBooking}
               onAddAttachment={handleAddAttachment}
               onDeleteAttachment={handleDeleteAttachment}
               portfolioItems={portfolioItems}
@@ -1679,15 +1768,19 @@ export default function App() {
               onDeleteAttachment={handleDeleteAttachment}
               purchaseInvoices={purchaseInvoices}
               onAddPurchaseInvoice={handleAddPurchaseInvoice}
+              onUpdatePurchaseInvoice={handleUpdatePurchaseInvoice}
               onDeletePurchaseInvoice={handleDeletePurchaseInvoice}
               salesInvoices={salesInvoices}
               onAddSalesInvoice={handleAddSalesInvoice}
+              onUpdateSalesInvoice={handleUpdateSalesInvoice}
               onDeleteSalesInvoice={handleDeleteSalesInvoice}
               rentalInvoices={rentalInvoices}
               onAddRentalInvoice={handleAddRentalInvoice}
+              onUpdateRentalInvoice={handleUpdateRentalInvoice}
               onDeleteRentalInvoice={handleDeleteRentalInvoice}
               eventInvoices={eventInvoices}
               onAddEventInvoice={handleAddEventInvoice}
+              onUpdateEventInvoice={handleUpdateEventInvoice}
               onDeleteEventInvoice={handleDeleteEventInvoice}
               quotations={quotations}
               onAddQuotation={handleAddQuotation}
@@ -1746,7 +1839,26 @@ export default function App() {
       </div>
 
       {/* 🌟 Smart Scroll Inverse Floating Social Bar (WhatsApp & Facebook - Hides on scroll up, shows on scroll down) */}
-      <SmartFloatingSocialBar isImmersiveFullView={isImmersiveFullView} />
+      <SmartFloatingSocialBar 
+        isImmersiveFullView={isImmersiveFullView} 
+        onOpenWhatsAppModal={() => {
+          setWhatsAppModalInitialData(undefined);
+          setIsWhatsAppModalOpen(true);
+        }}
+      />
+
+      {/* 💬 Smart WhatsApp Inquiry & Online Booking Modal */}
+      <SmartWhatsAppInquiryModal
+        isOpen={isWhatsAppModalOpen}
+        onClose={() => {
+          setIsWhatsAppModalOpen(false);
+          setWhatsAppModalInitialData(undefined);
+        }}
+        initialData={whatsAppModalInitialData}
+        onSaveOnlineBooking={(bookingData) => {
+          handleAddOnlineBooking(bookingData);
+        }}
+      />
 
       {/* 🗑️ Reliable Global Delete Modal */}
       {pendingDelete && (

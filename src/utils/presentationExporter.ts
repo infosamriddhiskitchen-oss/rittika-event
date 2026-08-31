@@ -9,48 +9,161 @@ export interface VideoExportOptions {
   onProgress?: (percent: number, statusText: string) => void;
 }
 
+export interface VideoExportResult {
+  blob: Blob;
+  url: string;
+  fileName: string;
+}
+
+/**
+ * 🌟 Helper to flatten multi-photo portfolio items into sequential individual photo slides
+ * preserving their individual specific title, individual budget, and individual description!
+ */
+export function expandMediaItemsToPhotoSlides(items: GalleryMediaItem[]): GalleryMediaItem[] {
+  const expanded: GalleryMediaItem[] = [];
+
+  items.forEach((item, itemIdx) => {
+    // If rich photoDetails exist
+    if (item.photoDetails && item.photoDetails.length > 0) {
+      item.photoDetails.forEach((photo, pIdx) => {
+        expanded.push({
+          id: `${item.id || itemIdx}-photo-${pIdx}`,
+          title: photo.title || `${item.title} (ছবি ${toBengaliNumber(pIdx + 1)})`,
+          category: item.category,
+          url: photo.url,
+          images: item.images,
+          date: item.date,
+          eventName: item.eventName,
+          customerName: item.customerName,
+          description: photo.description || item.description,
+          estimatedCost: photo.estimatedCost !== undefined ? photo.estimatedCost : (pIdx === 0 ? item.estimatedCost : undefined),
+          highlightTags: photo.highlightTags || item.highlightTags,
+          colorPalette: item.colorPalette
+        });
+      });
+    } else if (item.images && item.images.length > 1) {
+      // If legacy images array exist
+      item.images.forEach((imgUrl, pIdx) => {
+        expanded.push({
+          id: `${item.id || itemIdx}-img-${pIdx}`,
+          title: `${item.title} (ছবি ${toBengaliNumber(pIdx + 1)})`,
+          category: item.category,
+          url: imgUrl,
+          images: item.images,
+          date: item.date,
+          eventName: item.eventName,
+          customerName: item.customerName,
+          description: item.description,
+          estimatedCost: pIdx === 0 ? item.estimatedCost : undefined,
+          highlightTags: item.highlightTags,
+          colorPalette: item.colorPalette
+        });
+      });
+    } else {
+      expanded.push(item);
+    }
+  });
+
+  return expanded.length > 0 ? expanded : items;
+}
+
 /**
  * 🎬 1-Click Cinematic Presentation Video Exporter (.webm / .mp4)
  * Generates an HD video file with smooth Ken Burns zoom-in/zoom-out, cross-fades, 
  * lower-third typography, and musical chimes rendered client-side via Canvas + MediaRecorder.
  */
 export async function exportPresentationToVideo(
-  items: GalleryMediaItem[],
+  rawItems: GalleryMediaItem[],
   options: VideoExportOptions = {}
-): Promise<Blob> {
+): Promise<VideoExportResult> {
   const {
     secondsPerSlide = 4,
-    transitionEffect = 'kenburns',
     companyName = 'রিত্তিকা ইভেন্ট ম্যানেজমেন্ট',
     onProgress
   } = options;
+
+  const items = expandMediaItemsToPhotoSlides(rawItems);
 
   if (!items || items.length === 0) {
     throw new Error('কোনো ছবি পাওয়া যায়নি।');
   }
 
-  // Pre-load all images as HTMLImageElements
-  onProgress?.(5, 'ছবিগুলো লোড করা হচ্ছে...');
+  onProgress?.(5, 'ছবিগুলো লোড ও প্রসেসিং করা হচ্ছে...');
+
+  // Safe Bulletproof Image Preloading (Preventing Canvas Tainting and CORS failures)
   const loadedImages: HTMLImageElement[] = await Promise.all(
-    items.map((item, idx) => {
+    items.map(async (item) => {
+      const createFallbackImg = () => {
+        const fallback = new Image();
+        fallback.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%230f172a"/><stop offset="50%" stop-color="%231e1b4b"/><stop offset="100%" stop-color="%23020617"/></linearGradient></defs><rect width="1280" height="720" fill="url(%23g)"/><circle cx="640" cy="300" r="120" fill="%23facc15" opacity="0.15"/><text x="50%" y="45%" fill="%23facc15" font-size="34" font-family="sans-serif" font-weight="bold" text-anchor="middle">${encodeURIComponent(item.title || 'ইভেন্ট ডেকোরেশন')}</text><text x="50%" y="54%" fill="%2394a3b8" font-size="20" font-family="sans-serif" text-anchor="middle">${encodeURIComponent(companyName)}</text><text x="50%" y="62%" fill="%2310b981" font-size="22" font-family="sans-serif" font-weight="bold" text-anchor="middle">${encodeURIComponent(item.estimatedCost ? `বাজেট: ৳ ${item.estimatedCost.toLocaleString('en-IN')}` : '')}</text></svg>`;
+        return fallback;
+      };
+
+      if (!item.url) return createFallbackImg();
+
+      // If dataUrl, load directly
+      if (item.url.startsWith('data:')) {
+        return new Promise<HTMLImageElement>((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => resolve(createFallbackImg());
+          img.src = item.url;
+        });
+      }
+
+      // If HTTP/HTTPS URL, try fetching as blob first to guarantee safe canvas drawing
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const res = await fetch(item.url, { mode: 'cors', signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const blob = await res.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          return new Promise<HTMLImageElement>((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(createFallbackImg());
+            img.src = blobUrl;
+          });
+        }
+      } catch (err) {
+        // Fetch failed (CORS or network), fallback to crossOrigin anonymous img
+      }
+
       return new Promise<HTMLImageElement>((resolve) => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
-        img.onload = () => resolve(img);
+        let resolved = false;
+        const timer = setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            resolve(createFallbackImg());
+          }
+        }, 4000);
+
+        img.onload = () => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timer);
+            resolve(img);
+          }
+        };
         img.onerror = () => {
-          // fallback placeholder
-          const fallback = new Image();
-          fallback.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" fill="%23222"><rect width="800" height="600"/><text x="50%" y="50%" fill="%23fff" font-size="24" text-anchor="middle">Image</text></svg>';
-          fallback.onload = () => resolve(fallback);
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timer);
+            resolve(createFallbackImg());
+          }
         };
         img.src = item.url;
       });
     })
   );
 
-  onProgress?.(15, 'সিনেমাটিক ভিডিও রেন্ডারার প্রস্তুত হচ্ছে...');
+  onProgress?.(15, 'সিনেমাটিক ভিডিও রেন্ডারার ইঞ্জিন প্রস্তুত হচ্ছে...');
 
-  // Setup HD Canvas (1280x720 16:9 for optimal speed and crisp quality)
+  // Setup HD Canvas (1280x720 16:9 for optimal rendering speed and sharp quality)
   const width = 1280;
   const height = 720;
   const canvas = document.createElement('canvas');
@@ -59,7 +172,6 @@ export async function exportPresentationToVideo(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas context not available');
 
-  // Setup Media Stream & Audio Context
   const fps = 30;
   const canvasStream = canvas.captureStream(fps);
 
@@ -76,26 +188,41 @@ export async function exportPresentationToVideo(
       combinedStream = new MediaStream(tracks);
     }
   } catch (e) {
-    console.log('Audio stream setup skipped:', e);
+    console.log('Audio stream setup skipped, using video-only stream:', e);
+    combinedStream = canvasStream;
   }
 
   // Determine optimal MIME type
-  let mimeType = 'video/webm;codecs=vp9';
-  if (!MediaRecorder.isTypeSupported(mimeType)) {
-    mimeType = 'video/webm;codecs=vp8';
-  }
-  if (!MediaRecorder.isTypeSupported(mimeType)) {
-    mimeType = 'video/webm';
-  }
-  if (!MediaRecorder.isTypeSupported(mimeType) && MediaRecorder.isTypeSupported('video/mp4')) {
-    mimeType = 'video/mp4';
+  const possibleTypes = [
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm;codecs=h264',
+    'video/webm',
+    'video/mp4;codecs=avc1',
+    'video/mp4'
+  ];
+
+  let selectedMimeType = '';
+  for (const type of possibleTypes) {
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type)) {
+      selectedMimeType = type;
+      break;
+    }
   }
 
   const recordedChunks: Blob[] = [];
-  const recorder = new MediaRecorder(combinedStream, {
-    mimeType: MediaRecorder.isTypeSupported(mimeType) ? mimeType : undefined,
-    videoBitsPerSecond: 3500000 // 3.5 Mbps for crisp HD quality
-  });
+  let recorder: MediaRecorder;
+  try {
+    recorder = new MediaRecorder(combinedStream, {
+      mimeType: selectedMimeType || undefined,
+      videoBitsPerSecond: 3000000 // 3 Mbps
+    });
+  } catch (e) {
+    // Fallback without audio stream if combined stream failed
+    recorder = new MediaRecorder(canvasStream, {
+      videoBitsPerSecond: 2500000
+    });
+  }
 
   recorder.ondataavailable = (e) => {
     if (e.data && e.data.size > 0) {
@@ -103,11 +230,14 @@ export async function exportPresentationToVideo(
     }
   };
 
-  // Helper to play celebration chime in audio stream at slide start
+  // Helper to play celebration chime in audio stream
   const playSlideChime = (slideIdx: number) => {
     if (!audioContext || !audioDestination) return;
     try {
-      const notes = [523.25, 659.25, 783.99, 1046.50]; // C, E, G, High C
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+      const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
       const baseNote = notes[slideIdx % notes.length];
       const osc = audioContext.createOscillator();
       const gain = audioContext.createGain();
@@ -115,152 +245,157 @@ export async function exportPresentationToVideo(
       osc.frequency.value = baseNote;
       gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.03, audioContext.currentTime + 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 1.2);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 1.1);
       osc.connect(gain);
       gain.connect(audioDestination);
       osc.start();
-      osc.stop(audioContext.currentTime + 1.3);
+      osc.stop(audioContext.currentTime + 1.2);
     } catch (e) {}
   };
 
-  recorder.start();
+  // Start with timeslice to ensure continuous data gathering
+  recorder.start(500);
 
   const totalSlides = items.length;
   const framesPerSlide = Math.round(secondsPerSlide * fps);
-  const transitionFrames = Math.round(0.8 * fps); // 0.8s crossfade
+  const transitionFrames = Math.round(0.7 * fps);
 
-  // Helper to draw single frame with Ken Burns & typography overlay
+  // Helper to render frame
   const renderFrame = (
     imgCurrent: HTMLImageElement,
     itemCurrent: GalleryMediaItem,
-    progress: number, // 0 to 1
+    progress: number,
     slideIdx: number,
     imgNext?: HTMLImageElement,
     itemNext?: GalleryMediaItem,
-    transitionAlpha: number = 0 // 0 to 1
+    transitionAlpha: number = 0
   ) => {
-    // 1. Dark Backdrop
-    ctx.fillStyle = '#0f172a';
+    // 1. Dark Luxurious Backdrop
+    ctx.fillStyle = '#090d16';
     ctx.fillRect(0, 0, width, height);
 
     // 2. Draw Current Image with Cinematic Ken Burns
     const drawKenBurns = (img: HTMLImageElement, prog: number, isZoomIn: boolean, alpha = 1) => {
-      ctx.save();
-      ctx.globalAlpha = alpha;
+      try {
+        ctx.save();
+        ctx.globalAlpha = alpha;
 
-      const scale = isZoomIn ? 1.0 + prog * 0.14 : 1.14 - prog * 0.14;
-      const panX = isZoomIn ? (prog - 0.5) * 30 : (0.5 - prog) * 30;
-      const panY = (prog - 0.5) * 20;
+        const scale = isZoomIn ? 1.0 + prog * 0.12 : 1.12 - prog * 0.12;
+        const panX = isZoomIn ? (prog - 0.5) * 24 : (0.5 - prog) * 24;
+        const panY = (prog - 0.5) * 16;
 
-      const imgAspect = img.naturalWidth / img.naturalHeight;
-      const canvasAspect = width / height;
+        const imgAspect = (img.naturalWidth || 1280) / (img.naturalHeight || 720);
+        const canvasAspect = width / height;
 
-      let drawW, drawH;
-      if (imgAspect > canvasAspect) {
-        drawH = height * scale;
-        drawW = drawH * imgAspect;
-      } else {
-        drawW = width * scale;
-        drawH = drawW / imgAspect;
+        let drawW, drawH;
+        if (imgAspect > canvasAspect) {
+          drawH = height * scale;
+          drawW = drawH * imgAspect;
+        } else {
+          drawW = width * scale;
+          drawH = drawW / imgAspect;
+        }
+
+        const drawX = (width - drawW) / 2 + panX;
+        const drawY = (height - drawH) / 2 + panY;
+
+        ctx.drawImage(img, drawX, drawY, drawW, drawH);
+        ctx.restore();
+      } catch (err) {
+        ctx.restore();
       }
-
-      const drawX = (width - drawW) / 2 + panX;
-      const drawY = (height - drawH) / 2 + panY;
-
-      ctx.drawImage(img, drawX, drawY, drawW, drawH);
-      ctx.restore();
     };
 
     const isZoomIn = slideIdx % 2 === 0;
     drawKenBurns(imgCurrent, progress, isZoomIn, 1 - transitionAlpha);
 
-    // If crossfading to next image
     if (imgNext && transitionAlpha > 0) {
       const isNextZoomIn = (slideIdx + 1) % 2 === 0;
       drawKenBurns(imgNext, transitionAlpha * 0.2, isNextZoomIn, transitionAlpha);
     }
 
     // 3. Cinematic Vignette & Bottom Gradient Shadow
-    const grad = ctx.createLinearGradient(0, height - 260, 0, height);
+    const grad = ctx.createLinearGradient(0, height - 250, 0, height);
     grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    grad.addColorStop(0.5, 'rgba(0, 0, 0, 0.7)');
+    grad.addColorStop(0.5, 'rgba(0, 0, 0, 0.75)');
     grad.addColorStop(1, 'rgba(0, 0, 0, 0.95)');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, height - 260, width, 260);
+    ctx.fillRect(0, height - 250, width, 250);
 
     // Top Header Banner
-    const topGrad = ctx.createLinearGradient(0, 0, 0, 100);
+    const topGrad = ctx.createLinearGradient(0, 0, 0, 90);
     topGrad.addColorStop(0, 'rgba(0, 0, 0, 0.85)');
     topGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = topGrad;
-    ctx.fillRect(0, 0, width, 100);
+    ctx.fillRect(0, 0, width, 90);
 
     // Top Left: Company Branding
     ctx.fillStyle = '#facc15'; // Gold
-    ctx.font = 'bold 20px "Segoe UI", Tahoma, sans-serif';
-    ctx.fillText(companyName.toUpperCase(), 35, 42);
+    ctx.font = 'bold 20px "Noto Sans Bengali", "Segoe UI", sans-serif';
+    ctx.fillText(companyName.toUpperCase(), 35, 40);
 
     ctx.fillStyle = '#cbd5e1';
-    ctx.font = '13px "Segoe UI", Tahoma, sans-serif';
-    ctx.fillText('EXCLUSIVE PROJECT PRESENTATION & SHOWCASE', 35, 62);
+    ctx.font = '12px "Segoe UI", sans-serif';
+    ctx.fillText('EXCLUSIVE PROJECT PRESENTATION & SHOWCASE', 35, 60);
 
     // Top Right: Slide Counter
     ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-    ctx.fillRect(width - 155, 22, 120, 36);
+    ctx.fillRect(width - 150, 20, 115, 34);
     ctx.strokeStyle = '#facc15';
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(width - 155, 22, 120, 36);
+    ctx.strokeRect(width - 150, 20, 115, 34);
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 15px "Segoe UI", Tahoma, sans-serif';
+    ctx.font = 'bold 14px "Noto Sans Bengali", "Segoe UI", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`SLIDE ${slideIdx + 1} / ${totalSlides}`, width - 95, 46);
+    ctx.fillText(`স্লাইড ${toBengaliNumber(slideIdx + 1)} / ${toBengaliNumber(totalSlides)}`, width - 92, 42);
     ctx.textAlign = 'left';
 
     // 4. Lower-Third Info Overlay
     const activeItem = transitionAlpha > 0.5 && itemNext ? itemNext : itemCurrent;
-    const cardY = height - 160;
+    const cardY = height - 150;
 
     // Golden Accent Bar
     ctx.fillStyle = '#facc15';
-    ctx.fillRect(35, cardY, 6, 95);
+    ctx.fillRect(35, cardY, 6, 90);
 
     // Title
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 28px "Segoe UI", Tahoma, sans-serif';
-    ctx.fillText(activeItem.title, 55, cardY + 30);
+    ctx.font = 'bold 26px "Noto Sans Bengali", "Segoe UI", sans-serif';
+    const displayTitle = activeItem.title.length > 55 ? activeItem.title.slice(0, 55) + '...' : activeItem.title;
+    ctx.fillText(displayTitle, 55, cardY + 28);
 
     // Category Pill & Cost
     let currX = 55;
     if (activeItem.category) {
       ctx.fillStyle = '#facc15';
       const catText = activeItem.category.toUpperCase();
-      ctx.font = 'bold 12px "Segoe UI", Tahoma, sans-serif';
+      ctx.font = 'bold 12px "Noto Sans Bengali", "Segoe UI", sans-serif';
       const catWidth = ctx.measureText(catText).width + 16;
-      ctx.fillRect(currX, cardY + 45, catWidth, 24);
+      ctx.fillRect(currX, cardY + 42, catWidth, 24);
 
       ctx.fillStyle = '#000000';
-      ctx.fillText(catText, currX + 8, cardY + 62);
+      ctx.fillText(catText, currX + 8, cardY + 58);
       currX += catWidth + 15;
     }
 
     if (activeItem.estimatedCost) {
-      ctx.fillStyle = '#10b981'; // emerald
-      const costText = `আনুমানিক বাজেট: BDT ${activeItem.estimatedCost.toLocaleString()}`;
-      ctx.font = 'bold 14px "Segoe UI", Tahoma, sans-serif';
-      ctx.fillText(costText, currX, cardY + 62);
+      ctx.fillStyle = '#10b981'; // Emerald
+      const costText = `বাজেট: ৳ ${activeItem.estimatedCost.toLocaleString('en-IN')}`;
+      ctx.font = 'bold 14px "Noto Sans Bengali", "Segoe UI", sans-serif';
+      ctx.fillText(costText, currX, cardY + 58);
     }
 
-    // Subtitle / Tags
-    if (activeItem.highlightTags && activeItem.highlightTags.length > 0) {
+    // Subtitle / Details
+    if (activeItem.description) {
       ctx.fillStyle = '#94a3b8';
-      ctx.font = '13px "Segoe UI", Tahoma, sans-serif';
-      ctx.fillText(`✨ ${activeItem.highlightTags.join(' • ')}`, 55, cardY + 92);
-    } else if (activeItem.description) {
+      ctx.font = '13px "Noto Sans Bengali", "Segoe UI", sans-serif';
+      const shortDesc = activeItem.description.length > 80 ? activeItem.description.slice(0, 80) + '...' : activeItem.description;
+      ctx.fillText(shortDesc, 55, cardY + 86);
+    } else if (activeItem.highlightTags && activeItem.highlightTags.length > 0) {
       ctx.fillStyle = '#94a3b8';
-      ctx.font = '13px "Segoe UI", Tahoma, sans-serif';
-      const shortDesc = activeItem.description.length > 75 ? activeItem.description.slice(0, 75) + '...' : activeItem.description;
-      ctx.fillText(shortDesc, 55, cardY + 92);
+      ctx.font = '13px "Noto Sans Bengali", "Segoe UI", sans-serif';
+      ctx.fillText(`✨ ${activeItem.highlightTags.join(' • ')}`, 55, cardY + 86);
     }
 
     // 5. Bottom Real-time Video Progress Line
@@ -296,41 +431,51 @@ export async function exportPresentationToVideo(
         transitionAlpha
       );
 
-      // Report progress
       const currentOverallPct = Math.round(20 + ((s * framesPerSlide + f) / (totalSlides * framesPerSlide)) * 75);
       onProgress?.(
         currentOverallPct,
-        `সিনেমাটিক ভিডিও তৈরি হচ্ছে (স্লাইড ${s + 1}/${totalSlides}) - ${currentOverallPct}%`
+        `সিনেমাটিক ভিডিও তৈরি হচ্ছে (স্লাইড ${toBengaliNumber(s + 1)}/${toBengaliNumber(totalSlides)}) - ${toBengaliNumber(currentOverallPct)}%`
       );
 
-      // Yield frame timing to allow video encoding
       await new Promise((r) => setTimeout(r, 1000 / fps));
     }
   }
 
-  onProgress?.(96, 'ভিডিও ফাইল প্রসেসিং সম্পন্ন হচ্ছে...');
+  onProgress?.(96, 'ভিডিও ফাইল কম্প্রেশন ও ডাউনলোডের প্রস্তুতি সম্পন্ন হচ্ছে...');
 
   // Finish Recording
-  return new Promise<Blob>((resolve) => {
+  return new Promise<VideoExportResult>((resolve, reject) => {
     recorder.onstop = () => {
-      onProgress?.(100, 'ডাউনলোড প্রস্তুত!');
-      const blob = new Blob(recordedChunks, { type: mimeType });
-      
-      // Auto-trigger browser download
-      const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
-      const fileName = `Rittika_Cinematic_Presentation_${new Date().toISOString().split('T')[0]}.${extension}`;
+      onProgress?.(100, 'ভিডিও ফাইল প্রস্তুত!');
+      const ext = (selectedMimeType && selectedMimeType.includes('mp4')) ? 'mp4' : 'webm';
+      const blob = new Blob(recordedChunks, { type: selectedMimeType || 'video/webm' });
+      const fileName = `Rittika_Event_Video_${new Date().toISOString().split('T')[0]}.${ext}`;
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
 
-      resolve(blob);
+      // Trigger automatic browser download
+      try {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // Delay revoke to avoid interrupting ongoing download stream
+        setTimeout(() => URL.revokeObjectURL(url), 120000);
+      } catch (err) {
+        console.warn('Auto download error, url remains valid:', err);
+      }
+
+      resolve({ blob, url, fileName });
     };
 
+    recorder.onerror = (e) => {
+      reject(e);
+    };
+
+    if (recorder.state === 'recording') {
+      recorder.requestData();
+    }
     recorder.stop();
     audioContext?.close().catch(() => {});
   });
@@ -339,15 +484,17 @@ export async function exportPresentationToVideo(
 /**
  * 📄 1-Click Bengali PDF Presentation & Brochure Exporter
  * Renders high-definition presentation slides via HTML5 Canvas 2D with native Bengali Unicode fonts
- * (Noto Sans Bengali / Hind Siliguri) and exports to a crisp, print-ready PDF document.
+ * and exports to a crisp, print-ready PDF document.
  */
 export async function exportPresentationToPDF(
-  items: GalleryMediaItem[],
+  rawItems: GalleryMediaItem[],
   selectedCategories: string[] = [],
-  companyName: string = 'রিত্তিকা ডেকোরーション ও ইভেন্ট ম্যানেজমেন্ট'
+  companyName: string = 'রিত্তিকা ইভেন্ট ম্যানেজমেন্ট'
 ) {
+  const items = expandMediaItemsToPhotoSlides(rawItems);
+
   if (!items || items.length === 0) {
-    alert('কোনো ছবি বা ডেকোরেশন আইটেম পাওয়া যায়নি।');
+    alert('কোনো ছবি বা ইভেন্ট আইটেম পাওয়া যায়নি।');
     return;
   }
 
@@ -360,7 +507,7 @@ export async function exportPresentationToPDF(
         img.onload = () => resolve(img);
         img.onerror = () => {
           const fallback = new Image();
-          fallback.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" fill="%23222"><rect width="800" height="600" fill="%231e293b"/><text x="50%" y="50%" fill="%23fff" font-size="24" font-family="sans-serif" text-anchor="middle">ডেকোরেশন ছবি</text></svg>';
+          fallback.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" fill="%231e293b"><rect width="800" height="600" fill="%231e293b"/><text x="50%" y="50%" fill="%23facc15" font-size="24" font-family="sans-serif" font-weight="bold" text-anchor="middle">${encodeURIComponent(item.title || 'ইভেন্ট ছবি')}</text></svg>`;
           fallback.onload = () => resolve(fallback);
         };
         img.src = item.url;
@@ -387,7 +534,6 @@ export async function exportPresentationToPDF(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas context not available');
 
-  // Bengali Font Family Stack
   const fontBengali = '"Noto Sans Bengali", "Hind Siliguri", "Segoe UI", Roboto, sans-serif';
 
   // Helper to wrap text into multiple lines on canvas
@@ -468,8 +614,8 @@ export async function exportPresentationToPDF(
   drawRoundedRect(50, 50, canvasW - 100, canvasH - 100, 24, undefined, '#facc15', 4);
   drawRoundedRect(65, 65, canvasW - 130, canvasH - 130, 16, undefined, 'rgba(250, 204, 21, 0.35)', 1.5);
 
-  // Crown / Star Icon Badge
-  drawRoundedRect(canvasW / 2 - 80, 100, 160, 48, 24, 'rgba(250, 204, 21, 0.15)', '#facc15', 2);
+  // Badge
+  drawRoundedRect(canvasW / 2 - 120, 100, 240, 48, 24, 'rgba(250, 204, 21, 0.15)', '#facc15', 2);
   ctx.fillStyle = '#facc15';
   ctx.font = `bold 20px ${fontBengali}`;
   ctx.textAlign = 'center';
@@ -477,10 +623,10 @@ export async function exportPresentationToPDF(
 
   // Main Bengali Title
   ctx.fillStyle = '#ffffff';
-  ctx.font = `900 58px ${fontBengali}`;
-  ctx.fillText('রিত্তিকা ইভেন্ট ম্যানেজমেন্ট', canvasW / 2, 235);
+  ctx.font = `900 56px ${fontBengali}`;
+  ctx.fillText(companyName, canvasW / 2, 235);
 
-  // Subtitle (English & Bengali)
+  // Subtitle
   ctx.fillStyle = '#facc15';
   ctx.font = `bold 28px ${fontBengali}`;
   ctx.fillText('এক্সক্লুসিভ প্রজেক্ট ও ইভেন্ট ডিজাইন প্রেজেন্টেশন ব্রোশিউর', canvasW / 2, 290);
@@ -501,7 +647,7 @@ export async function exportPresentationToPDF(
   ctx.font = `bold 24px ${fontBengali}`;
   ctx.fillText('📋 প্রেজেন্টেশন সারসংক্ষেপ (Overview)', cardX + 40, cardY + 55);
 
-  // Horizontal divider inside card
+  // Divider
   ctx.strokeStyle = 'rgba(250, 204, 21, 0.3)';
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -521,7 +667,7 @@ export async function exportPresentationToPDF(
   ctx.fillStyle = '#ffffff';
   ctx.fillText(`• মোট প্রজেক্ট ডিজাইন: `, cardX + 40, cardY + 175);
   ctx.fillStyle = '#facc15';
-  ctx.fillText(`${toBengaliNumber(items.length)} টি প্রিমিয়াম প্রজেক্ট ও কনসেপ্ট`, cardX + 270, cardY + 175);
+  ctx.fillText(`${toBengaliNumber(items.length)} টি প্রিমিয়াম স্লাইড ও কনসেপ্ট`, cardX + 270, cardY + 175);
 
   // Date
   ctx.fillStyle = '#ffffff';
@@ -539,7 +685,7 @@ export async function exportPresentationToPDF(
   ctx.textAlign = 'center';
   ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
   ctx.font = `600 18px ${fontBengali}`;
-  ctx.fillText('সার্বিক পরিচালনায়: রিত্তিকা ইভেন্ট ম্যানেজমেন্ট • ওয়েবসাইট ও পোর্টাল লিংক সহ', canvasW / 2, canvasH - 100);
+  ctx.fillText(`সার্বিক পরিচালনায়: ${companyName} • মোবাইল: 01721-779396`, canvasW / 2, canvasH - 100);
 
   // Add Cover Page to PDF
   const coverImgData = canvas.toDataURL('image/jpeg', 0.95);
@@ -553,11 +699,11 @@ export async function exportPresentationToPDF(
     doc.addPage();
     ctx.clearRect(0, 0, canvasW, canvasH);
 
-    // Slide Background (Light luxury off-white canvas with dark header strip)
+    // Slide Background
     ctx.fillStyle = '#f8fafc';
     ctx.fillRect(0, 0, canvasW, canvasH);
 
-    // Top Header Banner (Deep Slate / Royal Twilight)
+    // Top Header Banner
     const headerH = 100;
     const topGrad = ctx.createLinearGradient(0, 0, canvasW, 0);
     topGrad.addColorStop(0, '#0f172a');
@@ -574,7 +720,7 @@ export async function exportPresentationToPDF(
     ctx.textAlign = 'left';
     ctx.fillStyle = '#facc15';
     ctx.font = `bold 28px ${fontBengali}`;
-    ctx.fillText('রিত্তিকা ইভেন্ট ম্যানেজমেন্ট', 60, 58);
+    ctx.fillText(companyName, 60, 58);
 
     ctx.fillStyle = '#cbd5e1';
     ctx.font = `600 16px ${fontBengali}`;
@@ -593,13 +739,10 @@ export async function exportPresentationToPDF(
     const imgBoxW = 980;
     const imgBoxH = 830;
 
-    // Image Background Frame Card
     drawRoundedRect(imgBoxX, imgBoxY, imgBoxW, imgBoxH, 20, '#ffffff', '#cbd5e1', 2);
 
-    // Draw Image Inside Box maintaining aspect ratio with cover/fit
     if (imgObj && imgObj.naturalWidth > 0) {
       ctx.save();
-      // Clip to rounded rect
       ctx.beginPath();
       const pad = 12;
       const innerX = imgBoxX + pad;
@@ -672,7 +815,7 @@ export async function exportPresentationToPDF(
       drawRoundedRect(rightX, currY, rightW, 64, 16, '#ecfdf5', '#10b981', 1.5);
       ctx.fillStyle = '#065f46';
       ctx.font = `bold 22px ${fontBengali}`;
-      ctx.fillText('আনুমানিক বাজেট (Estimated Budget):', rightX + 24, currY + 40);
+      ctx.fillText('আনুমানিক বাজেট:', rightX + 24, currY + 40);
 
       ctx.fillStyle = '#047857';
       ctx.font = `900 26px ${fontBengali}`;
@@ -684,39 +827,36 @@ export async function exportPresentationToPDF(
       currY += 82;
     }
 
-    // 4. Key Meta Details Box (Event Name, Client Name, Date)
+    // 4. Key Meta Details Box
     drawRoundedRect(rightX, currY, rightW, 140, 16, '#ffffff', '#e2e8f0', 1.5);
 
     let metaY = currY + 34;
-    // Event Name
     ctx.font = `bold 18px ${fontBengali}`;
     ctx.fillStyle = '#475569';
     ctx.fillText('অনুষ্ঠান / ইভেন্ট:', rightX + 24, metaY);
     ctx.fillStyle = '#0f172a';
     ctx.font = `700 18px ${fontBengali}`;
-    ctx.fillText(item.eventName || 'স্ট্যান্ডার্ড এক্সক্লুসিভ স্টেজ ডেকোরেশন', rightX + 160, metaY);
+    ctx.fillText(item.eventName || 'এক্সক্লুসিভ স্টেজ ডেকোরেশন', rightX + 160, metaY);
     metaY += 34;
 
-    // Client Name
     ctx.font = `bold 18px ${fontBengali}`;
     ctx.fillStyle = '#475569';
     ctx.fillText('ক্লায়েন্ট / হোস্ট:', rightX + 24, metaY);
     ctx.fillStyle = '#0f172a';
     ctx.font = `700 18px ${fontBengali}`;
-    ctx.fillText(item.customerName || 'সাধারণ প্রদর্শনীর জন্য সংরক্ষিত', rightX + 160, metaY);
+    ctx.fillText(item.customerName || 'প্রদর্শনীর জন্য সংরক্ষিত', rightX + 160, metaY);
     metaY += 34;
 
-    // Date
     ctx.font = `bold 18px ${fontBengali}`;
     ctx.fillStyle = '#475569';
-    ctx.fillText('তারিখ ও সময়:', rightX + 24, metaY);
+    ctx.fillText('তারিখ:', rightX + 24, metaY);
     ctx.fillStyle = '#0f172a';
     ctx.font = `700 18px ${fontBengali}`;
     ctx.fillText(item.date || new Date().toISOString().split('T')[0], rightX + 160, metaY);
 
     currY += 160;
 
-    // 5. Description in Bengali (Multi-line)
+    // 5. Description in Bengali
     if (item.description) {
       ctx.fillStyle = '#1e293b';
       ctx.font = `bold 20px ${fontBengali}`;
@@ -755,11 +895,11 @@ export async function exportPresentationToPDF(
       currY += 46;
     }
 
-    // 7. Theme Color Palette Swatches
+    // 7. Theme Color Palette
     if (item.colorPalette && item.colorPalette.length > 0) {
       ctx.fillStyle = '#475569';
       ctx.font = `bold 18px ${fontBengali}`;
-      ctx.fillText('থিম কালার প্যালেট (Theme Palette):', rightX, currY + 18);
+      ctx.fillText('থিম কালার প্যালেট:', rightX, currY + 18);
       currY += 28;
 
       let swatchX = rightX;
@@ -769,7 +909,7 @@ export async function exportPresentationToPDF(
       }
     }
 
-    // 📄 Bottom Footer Line on Each Slide
+    // Bottom Footer Line
     ctx.strokeStyle = '#e2e8f0';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -780,30 +920,29 @@ export async function exportPresentationToPDF(
     ctx.fillStyle = '#64748b';
     ctx.font = `600 15px ${fontBengali}`;
     ctx.textAlign = 'left';
-    ctx.fillText('✨ রিত্তিকা ইভেন্ট ম্যানেজমেন্ট • মোবাইল: 01721-779396 • ওয়েবসাইট ও লাইভ পোর্টাল বুকিং', 60, canvasH - 35);
+    ctx.fillText(`✨ ${companyName} • মোবাইল: 01721-779396 • ওয়েবসাইট ও লাইভ পোর্টাল বুকিং`, 60, canvasH - 35);
 
     ctx.textAlign = 'right';
     ctx.fillText('Confidential Client Presentation Document', canvasW - 60, canvasH - 35);
 
-    // Add Slide to PDF
     const slideImgData = canvas.toDataURL('image/jpeg', 0.95);
     doc.addImage(slideImgData, 'JPEG', 0, 0, pageWidth, pageHeight);
   }
 
-  // Save the Final PDF File
   const fileName = `Rittika_Event_Presentation_${new Date().toISOString().split('T')[0]}.pdf`;
   doc.save(fileName);
 }
 
 /**
  * 1-Click Interactive Offline HTML Slide Presentation Package Exporter
- * Creates a standalone offline web player with slideshow, audio chimes, transitions & zoom!
  */
 export function exportStandaloneHTMLSlideshow(
-  items: GalleryMediaItem[],
+  rawItems: GalleryMediaItem[],
   selectedCategories: string[] = [],
   companyName: string = 'রিত্তিকা ইভেন্ট ম্যানেজমেন্ট'
 ) {
+  const items = expandMediaItemsToPhotoSlides(rawItems);
+
   if (!items || items.length === 0) {
     alert('কোনো ছবি বা ইভেন্ট আইটেম পাওয়া যায়নি।');
     return;
@@ -817,7 +956,7 @@ export function exportStandaloneHTMLSlideshow(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${companyName} - প্রজেক্ট প্রেসেন্টেশন স্লাইডশো</title>
+  <title>${companyName} - প্রজেক্ট প্রেজেন্টেশন স্লাইডশো</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -989,7 +1128,7 @@ export function exportStandaloneHTMLSlideshow(
       document.getElementById('counter').innerText = (currentIdx + 1) + ' / ' + items.length;
       document.getElementById('infoTitle').innerText = item.title;
       
-      let meta = 'ক্যাটাগরি: ' + (item.category || 'ডেকোরেশন');
+      let meta = 'ক্যাটাগরি: ' + (item.category || 'ইভেন্ট');
       if (item.estimatedCost) meta += ' | বাজেট: ৳' + item.estimatedCost.toLocaleString();
       document.getElementById('infoMeta').innerText = meta;
       document.getElementById('infoDesc').innerText = item.description || '';
@@ -1005,7 +1144,6 @@ export function exportStandaloneHTMLSlideshow(
         });
       }
 
-      // Update thumbs
       const thumbEls = document.querySelectorAll('.thumb');
       thumbEls.forEach((el, idx) => {
         el.className = 'thumb' + (idx === currentIdx ? ' active' : '');
@@ -1102,5 +1240,5 @@ export function exportStandaloneHTMLSlideshow(
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
